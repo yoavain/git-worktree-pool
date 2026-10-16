@@ -1,0 +1,195 @@
+import { execFile } from "node:child_process";
+import { chmod, copyFile, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { samePath } from "../../src/core/naming.js";
+import { findGitBash } from "../../src/platform/git-bash.js";
+
+const run = promisify(execFile);
+const win = process.platform === "win32";
+const LAUNCHERS = fileURLToPath(new URL("../../launchers/", import.meta.url));
+const NAMES = ["wtp.cmd", "wtp.ps1", "wtp"];
+
+async function available(cmd: string, args: string[]): Promise<boolean> {
+    try {
+        await run(cmd, args, { windowsHide: true });
+        return true;
+    }
+    catch {
+        return false;
+    }
+}
+
+interface Result { stdout: string; stderr: string; code: number }
+async function attempt(cmd: string, args: string[], opts: { env: NodeJS.ProcessEnv; cwd: string }): Promise<Result> {
+    try {
+        const r = await run(cmd, args, { ...opts, windowsHide: true });
+        return { stdout: r.stdout, stderr: r.stderr, code: 0 };
+    }
+    catch (e) {
+        const x = e as { stdout?: string; stderr?: string; code?: number };
+        return { stdout: x.stdout ?? "", stderr: x.stderr ?? "", code: x.code ?? -1 };
+    }
+}
+
+// Vitest collects suites synchronously, so probe the shells with top-level await.
+const bash = await findGitBash();
+const bashOk = bash !== null && (await available(bash, ["--version"]));
+const psShells: { exe: string; ok: boolean }[] = [];
+if (win) {
+    for (const exe of ["pwsh", "powershell.exe"]) {
+        psShells.push({ exe, ok: await available(exe, ["-NoProfile", "-NonInteractive", "-Command", "exit 0"]) });
+    }
+}
+
+// Each test sets PATH itself. On Windows the key can be "Path", so drop every spelling.
+const baseEnv: NodeJS.ProcessEnv = Object.fromEntries(Object.entries(process.env).filter(([k]) => k.toUpperCase() !== "PATH"));
+const originalPath = process.env.PATH ?? "";
+
+let tmp: string;
+let launcherDir: string;
+let binDir: string;
+let target: string;
+let umlautTarget: string;
+
+beforeAll(async () => {
+    tmp = await realpath(await mkdtemp(path.join(os.tmpdir(), "wtp-launch-")));
+    // Spaces and parentheses, like a real install folder.
+    launcherDir = path.join(tmp, "Program Files (x86)", "wtp");
+    binDir = path.join(tmp, "bin");
+    target = path.join(tmp, "slot");
+    umlautTarget = path.join(tmp, "dir \u00fc", "slot");
+    for (const d of [launcherDir, binDir, target, umlautTarget]) await mkdir(d, { recursive: true });
+    for (const f of NAMES) await copyFile(path.join(LAUNCHERS, f), path.join(launcherDir, f));
+    await chmod(path.join(launcherDir, "wtp"), 0o755);
+    // The fake worktree-pool writes FAKE_TARGET to WTP_CWD_FILE, records WTP_VIA, and exits FAKE_EXIT.
+    const sh = [
+        "#!/bin/sh",
+        "[ -n \"$FAKE_TARGET\" ] && printf '%s' \"$FAKE_TARGET\" > \"$WTP_CWD_FILE\"",
+        "[ -n \"$FAKE_VIA_FILE\" ] && printf '%s' \"$WTP_VIA\" > \"$FAKE_VIA_FILE\"",
+        "exit \"${FAKE_EXIT:-0}\"",
+        ""
+    ].join("\n");
+    await writeFile(path.join(binDir, "worktree-pool"), sh);
+    await chmod(path.join(binDir, "worktree-pool"), 0o755);
+    if (win) {
+    // cmd's own echo can't write UTF-8 reliably, so the fake hands the write to node, like the real one.
+        const cmd = "@echo off\r\nif not \"%FAKE_TARGET%\"==\"\" node -e \"require('fs').writeFileSync(process.env.WTP_CWD_FILE, process.env.FAKE_TARGET)\"\r\nexit /b %FAKE_EXIT%\r\n";
+        await writeFile(path.join(binDir, "worktree-pool.cmd"), cmd);
+    }
+});
+
+afterAll(async () => {
+    await rm(tmp, { recursive: true, force: true });
+});
+
+const env = (extra: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv => ({
+    ...baseEnv,
+    PATH: [launcherDir, binDir, originalPath].join(path.delimiter),
+    FAKE_EXIT: "0",
+    FAKE_TARGET: "",
+    ...extra
+});
+const lastLine = (s: string) => s.trim().split(/\r?\n/).pop() ?? "";
+
+describe("launcher files", () => {
+    it("keep the line endings each shell needs", async () => {
+        for (const f of ["wtp.cmd", "wtp.ps1"]) {
+            const text = await readFile(path.join(LAUNCHERS, f), "latin1");
+            expect(text.split("\n").slice(0, -1).every((l) => l.endsWith("\r"))).toBe(true);
+        }
+        expect(await readFile(path.join(LAUNCHERS, "wtp"), "latin1")).not.toContain("\r");
+    });
+
+    it("are ASCII and carry the marker", async () => {
+        for (const f of NAMES) {
+            const text = await readFile(path.join(LAUNCHERS, f), "latin1");
+            expect([...text].every((c) => c.charCodeAt(0) < 128)).toBe(true);
+            expect(text).toContain("wtp-launcher 1");
+        }
+    });
+});
+
+describe.runIf(win)("wtp.cmd", () => {
+    const cmd = (line: string, e: NodeJS.ProcessEnv) => attempt("cmd.exe", ["/d", "/v:on", "/c", line], { env: e, cwd: tmp });
+
+    it("moves cmd to the folder that worktree-pool picks", async () => {
+        const r = await cmd("wtp & node -p process.cwd()", env({ FAKE_TARGET: target }));
+        expect(samePath(lastLine(r.stdout), target)).toBe(true);
+    });
+
+    it("handles a non-ASCII folder", async () => {
+        const r = await cmd("wtp & node -p process.cwd()", env({ FAKE_TARGET: umlautTarget }));
+        expect(samePath(lastLine(r.stdout), umlautTarget)).toBe(true);
+    });
+
+    it("keeps the exit code and stays put without a folder", async () => {
+        const r = await cmd("wtp & echo rc=!errorlevel! & node -p process.cwd()", env({ FAKE_EXIT: "3" }));
+        const lines = r.stdout.trim().split(/\r?\n/);
+        expect(lines.at(-2)?.trim()).toBe("rc=3");
+        expect(samePath(lines.at(-1)!, tmp)).toBe(true);
+    });
+
+    it("leaves a WTP_CWD_FILE that the caller set alone", async () => {
+        const preset = path.join(tmp, "preset.txt");
+        await writeFile(preset, "");
+        const r = await cmd("wtp & node -p process.cwd()", env({ FAKE_TARGET: target, WTP_CWD_FILE: preset }));
+        expect(samePath(lastLine(r.stdout), tmp)).toBe(true);
+        expect(await readFile(preset, "utf8")).toBe(target);
+    });
+
+    it("explains a missing worktree-pool", async () => {
+        const system32 = path.join(process.env.SystemRoot ?? "C:\\Windows", "System32");
+        const r = await cmd("wtp & echo rc=!errorlevel!", { ...baseEnv, PATH: [launcherDir, system32].join(";") });
+        expect(r.stdout).toContain("rc=9009");
+        expect(r.stderr).toContain("worktree-pool is not installed");
+        expect(r.stderr).toContain("Program Files (x86)");
+    });
+});
+
+describe("wtp.ps1", () => {
+    for (const { exe, ok } of psShells) {
+        it.runIf(ok)(`moves ${exe} to the folder that worktree-pool picks`, async () => {
+            const command = ["[Console]::OutputEncoding = [Text.Encoding]::UTF8", "wtp", "\"rc=$LASTEXITCODE\"", "(Get-Location).Path"].join("; ");
+            const r = await attempt(exe, ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", command], {
+                env: env({ FAKE_TARGET: umlautTarget }), cwd: tmp
+            });
+            const lines = r.stdout.trim().split(/\r?\n/);
+            expect(lines.at(-2)).toBe("rc=0");
+            expect(samePath(lines.at(-1)!, umlautTarget)).toBe(true);
+        });
+
+        it.runIf(ok)(`keeps the exit code in ${exe}`, async () => {
+            const r = await attempt(exe, ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", "wtp; \"rc=$LASTEXITCODE\""], {
+                env: env({ FAKE_EXIT: "3" }), cwd: tmp
+            });
+            expect(lastLine(r.stdout)).toBe("rc=3");
+        });
+    }
+});
+
+describe("wtp (sh)", () => {
+    const toUnix = "to_unix() { command -v cygpath >/dev/null 2>&1 && cygpath -u \"$1\" || printf \"%s\" \"$1\"; }";
+
+    it.runIf(bashOk)("runs worktree-pool with WTP_VIA=sh and keeps the exit code, but cannot move the shell", async () => {
+        const via = path.join(tmp, "via.txt");
+        const script = [toUnix, "PATH=\"$(to_unix \"$1\"):$(to_unix \"$2\"):$PATH\"", "cd \"$(to_unix \"$3\")\"", "wtp; echo \"rc=$?\"", "pwd -W 2>/dev/null || pwd"].join("\n");
+        const { stdout } = await run(bash!, ["--noprofile", "--norc", "-c", script, "_", launcherDir, binDir, tmp], {
+            env: { ...process.env, FAKE_EXIT: "4", FAKE_TARGET: "", FAKE_VIA_FILE: via }, windowsHide: true
+        });
+        const lines = stdout.trim().split(/\r?\n/);
+        expect(lines[0]).toBe("rc=4");
+        expect(samePath(lines[1]!, tmp)).toBe(true);
+        expect(await readFile(via, "utf8")).toBe("sh");
+    });
+
+    it.runIf(bashOk)("explains a missing worktree-pool", async () => {
+        const script = [toUnix, "PATH=\"$(to_unix \"$1\"):/usr/bin:/bin\"", "wtp; echo \"rc=$?\""].join("\n");
+        const r = await attempt(bash!, ["--noprofile", "--norc", "-c", script, "_", launcherDir], { env: { ...process.env }, cwd: tmp });
+        expect(lastLine(r.stdout)).toBe("rc=127");
+        expect(r.stderr).toContain("worktree-pool is not installed");
+    });
+});

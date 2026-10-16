@@ -1,0 +1,49 @@
+{
+  "name": "git-worktree-pool",
+  "version": "0.1.0",
+  "description": "Manage a pool of reusable git worktrees from the command line or a TUI",
+  "type": "module",
+  "bin": {
+    "worktree-pool": "dist/bin/wtp.js"
+  },
+  "files": [
+    "dist",
+    "launchers"
+  ],
+  "engines": {
+    "node": ">=22.12"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "test:e2e": "vitest run --config vitest.e2e.config.ts",
+    "eslint": "eslint --cache --cache-location ./.eslint-cache/ --cache-strategy content src/ tests/ tests-e2e/ eslint.config.mjs vitest.config.ts vitest.e2e.config.ts",
+    "eslint:fix": "npm run eslint -- --fix"
+  },
+  "overrides": {
+    "rolldown": "1.2.12"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@types/node": "24.6.0",
+    "@types/react": "19.3.0",
+    "@typescript-eslint/eslint-plugin": "8.71.0",
+    "@typescript-eslint/parser": "8.71.0",
+    "@typescript/native": "npm:typescript@7.0.2",
+    "eslint": "10.11.0",
+    "eslint-import-resolver-typescript": "4.4.5",
+    "eslint-plugin-import-x": "4.17.1",
+    "eslint-plugin-n": "18.4.0",
+    "eslint-plugin-security": "4.2.0",
+    "globals": "17.13.0",
+    "ink-testing-library": "4.0.0",
+    "typescript": "npm:@typescript/typescript6@6.0.2",
+    "vite": "8.3.2",
+    "vitest": "5.0.3"
+  },
+  "dependencies": {
+    "ink": "7.1.1",
+    "react": "19.3.0"
+  }
+}

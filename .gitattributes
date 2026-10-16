@@ -1,0 +1,3 @@
+launchers/wtp.cmd text eol=crlf
+launchers/wtp.ps1 text eol=crlf
+launchers/wtp text eol=lf
