@@ -38,11 +38,11 @@ async function attempt(cmd: string, args: string[], opts: { env: NodeJS.ProcessE
 // Vitest collects suites synchronously, so probe the shells with top-level await.
 const bash = await findGitBash();
 const bashOk = bash !== null && (await available(bash, ["--version"]));
+// Both entries always exist, so the wtp.ps1 suite is never empty (vitest fails an empty suite).
+// The launchers are Windows-only, so off Windows both tests are skipped.
 const psShells: { exe: string; ok: boolean }[] = [];
-if (win) {
-    for (const exe of ["pwsh", "powershell.exe"]) {
-        psShells.push({ exe, ok: await available(exe, ["-NoProfile", "-NonInteractive", "-Command", "exit 0"]) });
-    }
+for (const exe of ["pwsh", "powershell.exe"]) {
+    psShells.push({ exe, ok: win && (await available(exe, ["-NoProfile", "-NonInteractive", "-Command", "exit 0"])) });
 }
 
 // Each test sets PATH itself. On Windows the key can be "Path", so drop every spelling.
