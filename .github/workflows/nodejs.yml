@@ -1,0 +1,133 @@
+name: Node CI
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    tags:
+      - '*.*.*'
+
+# Read-only by default. Only the publish job gets write access.
+permissions:
+  contents: read
+
+jobs:
+  build:
+    # Unlike fix-lockfile-integrity, the build runs on all three OSes: the wtp launchers and the
+    # shell tests are platform-specific, and Windows is the main target (cmd).
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ 'ubuntu-latest', 'windows-latest', 'macos-latest' ]
+        node-version: [ '22', '24', '26' ]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+
+      - name: Setup NodeJS
+        uses: actions/setup-node@v7.1.0
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: npm
+
+      - name: Dependencies Install
+        run: npm ci
+        env:
+          CI: true
+
+      - name: Type Check
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run eslint
+
+      - name: Test
+        run: npm test
+        env:
+          CI: true
+
+      - name: Build
+        run: npm run build
+
+      - name: Install Test
+        run: npm run test:e2e
+        env:
+          CI: true
+
+      - name: Package Check
+        run: npm pack --dry-run
+
+  publish:
+    runs-on: windows-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: build
+    # id-token for npm provenance; contents for the GitHub release.
+    permissions:
+      id-token: write
+      contents: write
+    strategy:
+      matrix:
+        node-version: [ '24' ]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+
+      - name: Setup NodeJS
+        uses: actions/setup-node@v7.1.0
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: npm
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Verify tag matches package version
+        shell: bash
+        env:
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          PACKAGE_VERSION="v$(node -p "require('./package.json').version")"
+          if [ "$PACKAGE_VERSION" != "$TAG_NAME" ]; then
+            echo "Tag $TAG_NAME does not match package.json version $PACKAGE_VERSION"
+            exit 1
+          fi
+
+      - name: Dependencies Install
+        run: npm ci
+        env:
+          CI: true
+
+      - name: Build
+        run: |
+          npm run build
+          npm pack
+        env:
+          CI: true
+
+      - name: Pre-Publish - install package globally
+        run: |
+          FOR /F "tokens=*" %%g IN ('node -e "console.log(require(""./package.json"").version)"') do (SET VERSION=%%g)
+          npm i -g git-worktree-pool-%VERSION%.tgz
+        shell: cmd
+
+      # Batch files need "call" here: without it, cmd runs the first one and never returns to this script.
+      - name: Pre-Publish - test package globally
+        run: |
+          call worktree-pool --version || exit /b 1
+          call worktree-pool setup --yes || exit /b 1
+          call wtp --version
+        shell: cmd
+
+      - name: Publish
+        run: npm publish --provenance --tag ${{ contains(github.ref_name, '-') && 'beta' || 'latest' }}
+
+      - name: Release
+        # A third-party action in a job with write access: pinned to a commit, not a movable tag.
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
+        with:
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          files: git-worktree-pool-*.tgz
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

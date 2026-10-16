@@ -153,13 +153,16 @@ describe.runIf(win)("wtp.cmd", () => {
 describe("wtp.ps1", () => {
     for (const { exe, ok } of psShells) {
         it.runIf(ok)(`moves ${exe} to the folder that worktree-pool picks`, async () => {
-            const command = ["[Console]::OutputEncoding = [Text.Encoding]::UTF8", "wtp", "\"rc=$LASTEXITCODE\"", "(Get-Location).Path"].join("; ");
+            // The shell writes its folder to a UTF-8 file, not to stdout. Without a console (CI runners),
+            // Windows PowerShell 5.1 encodes stdout in the OEM code page, and the u-umlaut gets lost.
+            const where = path.join(tmp, `where-${exe}.txt`);
+            const command = ["wtp", "\"rc=$LASTEXITCODE\"", `[IO.File]::WriteAllText('${where}', (Get-Location).Path)`].join("; ");
             const r = await attempt(exe, ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", command], {
                 env: env({ FAKE_TARGET: umlautTarget }), cwd: tmp
             });
-            const lines = r.stdout.trim().split(/\r?\n/);
-            expect(lines.at(-2)).toBe("rc=0");
-            expect(samePath(lines.at(-1)!, umlautTarget)).toBe(true);
+            expect(lastLine(r.stdout)).toBe("rc=0");
+            const landed = await readFile(where, "utf8");
+            expect(samePath(landed, umlautTarget), `landed in ${landed}`).toBe(true);
         });
 
         it.runIf(ok)(`keeps the exit code in ${exe}`, async () => {

@@ -95,6 +95,8 @@ wtp reads git config, so per-repo settings live in `.git/config`:
 
 Run `npm run typecheck`, `npm run eslint`, and `npm test` before you commit. `npm run test:e2e` installs the packed package for real and runs real shells, so only CI runs it. On a machine with a Node version manager in shim mode (nvm for Windows), it could write into your own global install.
 
+CI (`.github/workflows/nodejs.yml`) runs on pull requests to `main` and on version tags. To release, set the version in `package.json`, then push the tag `v<version>`. The publish job checks that the tag matches, installs the packed package globally on Windows, runs it, publishes to npm, and creates a GitHub release.
+
 ## Dependencies
 
 Every package passed a Snyk `snyk_package_health_check` before it was added. Versions are at least 14 days old (the repo's `.npmrc` sets `min-release-age=14`).
