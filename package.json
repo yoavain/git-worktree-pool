@@ -15,7 +15,7 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "type-check": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "test:e2e": "vitest run --config vitest.e2e.config.ts",
     "eslint": "eslint --cache --cache-location ./.eslint-cache/ --cache-strategy content src/ tests/ tests-e2e/ eslint.config.mjs vitest.config.ts vitest.e2e.config.ts",
