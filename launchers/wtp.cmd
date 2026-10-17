@@ -1,8 +1,10 @@
 @echo off
-rem wtp-launcher 2
+rem wtp-launcher 3
 rem Written by "worktree-pool setup". It runs worktree-pool, then moves this cmd session to
 rem the folder that worktree-pool picked. "worktree-pool setup --remove" deletes this file.
 setlocal
+rem worktree-pool runs setup and teardown scripts in the shell that called it.
+set "WTP_SHELL=cmd"
 where /q worktree-pool || goto :missing
 if defined WTP_CWD_FILE (
   call worktree-pool %*

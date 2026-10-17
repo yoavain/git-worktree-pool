@@ -88,4 +88,11 @@ describe("free", () => {
         await expect(free(await ctx(), 1)).rejects.toThrow(/locked/);
         expect((await free(await ctx(), 1, { force: true })).alreadyFree).toBe(false);
     });
+
+    it("stops when the slot changed while its teardown ran", async () => {
+        const one = await fx.addWorktree(1, "feat/a");
+        await expect(free(await ctx(), 1, { expectBranch: "other" })).rejects.toThrow("Slot 1 changed while its teardown ran. Nothing else changed.");
+        expect((await fx.git(one, "branch", "--show-current")).trim()).toBe("feat/a");
+        expect((await free(await ctx(), 1, { expectBranch: "feat/a" })).alreadyFree).toBe(false);
+    });
 });

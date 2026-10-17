@@ -11,11 +11,12 @@ export const PROFILE_VERSION = 1;
 export const PROFILE_MARKER = `${MARKER} (wtp-profile ${PROFILE_VERSION})`;
 export const POWERSHELL_NO_PROFILE = "PowerShell needs no profile line. Run \"worktree-pool setup\" once.";
 
-const POSIX = `${MARKER}
+// WTP_SHELL names the shell that runs setup and teardown scripts.
+const posix = (shell: "bash" | "zsh") => `${MARKER}
 wtp() {
   local f rc dir
   f="$(mktemp "\${TMPDIR:-/tmp}/wtp-cwd.XXXXXX")" || return
-  WTP_CWD_FILE="$f" command worktree-pool "$@"
+  WTP_SHELL=${shell} WTP_CWD_FILE="$f" command worktree-pool "$@"
   rc=$?
   dir="$(cat -- "$f" 2>/dev/null)"
   rm -f -- "$f"
@@ -31,7 +32,7 @@ const FISH = `${MARKER}
 function wtp
     set -l f (mktemp)
     or return
-    WTP_CWD_FILE=$f command worktree-pool $argv
+    WTP_SHELL=fish WTP_CWD_FILE=$f command worktree-pool $argv
     set -l rc $status
     set -l dir (cat $f 2>/dev/null)
     rm -f $f
@@ -50,7 +51,7 @@ export function parseShell(value: string | undefined): Shell {
 }
 
 export function initScript(shell: Shell): string {
-    return shell === "fish" ? FISH : POSIX;
+    return shell === "fish" ? FISH : posix(shell);
 }
 
 export function profileLine(shell: Shell): string {

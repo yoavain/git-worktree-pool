@@ -26,7 +26,7 @@ describe("cdHint", () => {
     });
 
     it("says to use wtp when a launcher exists on Windows", async () => {
-        const f = fs({ "C:\\bin\\wtp.cmd": "rem wtp-launcher 2" });
+        const f = fs({ "C:\\bin\\wtp.cmd": "rem wtp-launcher 3" });
         expect(await cdHint({ platform: "win32", env: { PATH: "C:\\bin" }, home: emptyHome() }, f)).toBe(USE_WTP_HINT);
     });
 
@@ -36,7 +36,7 @@ describe("cdHint", () => {
     });
 
     it("asks for the function when the sh launcher ran", async () => {
-        const f = fs({ "C:\\bin\\wtp.cmd": "rem wtp-launcher 2" });
+        const f = fs({ "C:\\bin\\wtp.cmd": "rem wtp-launcher 3" });
         expect(await cdHint({ platform: "win32", env: { PATH: "C:\\bin", WTP_VIA: "sh" }, home: emptyHome() }, f)).toBe(FUNCTION_HINT);
         expect(FUNCTION_HINT).toContain("worktree-pool setup");
     });
@@ -52,7 +52,7 @@ describe("cdHint", () => {
     });
 
     it("names setup off Windows, where only the function changes the folder", async () => {
-        const f = fs({ "/usr/bin/wtp": "# wtp-launcher 2" });
+        const f = fs({ "/usr/bin/wtp": "# wtp-launcher 3" });
         expect(await cdHint({ platform: "linux", env: { PATH: "/usr/bin" }, home: emptyHome() }, f)).toBe(SETUP_HINT);
     });
 });

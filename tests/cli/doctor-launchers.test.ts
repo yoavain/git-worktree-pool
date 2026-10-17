@@ -51,13 +51,13 @@ describe("doctor launcher checks (Windows)", () => {
 
     it("notes a Restricted PowerShell 5.1 when the launcher is fine", async () => {
         const t = io();
-        await doctorCommand(args, t.io, deps({ "C:\\bin\\wtp.cmd": "rem wtp-launcher 2" }, "Restricted"));
+        await doctorCommand(args, t.io, deps({ "C:\\bin\\wtp.cmd": "rem wtp-launcher 3" }, "Restricted"));
         expect(t.err()).toContain("Set-ExecutionPolicy");
     });
 
     it("names the launcher that wins, and warns about nothing when everything is fine", async () => {
         const t = io();
-        await doctorCommand(args, t.io, deps({ "C:\\bin\\wtp.cmd": "rem wtp-launcher 2" }));
+        await doctorCommand(args, t.io, deps({ "C:\\bin\\wtp.cmd": "rem wtp-launcher 3" }));
         expect(t.out()).toContain("wtp -> C:\\bin\\wtp.cmd");
         expect(t.err()).toBe("");
     });
@@ -79,14 +79,14 @@ describe("doctor wtp check (POSIX)", () => {
     it("names the profile function", async () => {
         writeFileSync(path.join(home, ".bashrc"), `${MARKER}\n${profileLine("bash")}\n`);
         const t = io();
-        expect(await doctorCommand(args, t.io, deps({ "/usr/bin/wtp": "# wtp-launcher 2" }))).toBe(0);
+        expect(await doctorCommand(args, t.io, deps({ "/usr/bin/wtp": "# wtp-launcher 3" }))).toBe(0);
         expect(t.out()).toContain(`wtp -> the wtp function in ${path.join(home, ".bashrc")}`);
         expect(t.err()).toBe("");
     });
 
     it("names the sh launcher, and says it can't change the folder", async () => {
         const t = io();
-        expect(await doctorCommand(args, t.io, deps({ "/usr/bin/wtp": "# wtp-launcher 2" }))).toBe(0);
+        expect(await doctorCommand(args, t.io, deps({ "/usr/bin/wtp": "# wtp-launcher 3" }))).toBe(0);
         expect(t.out()).toContain("wtp -> /usr/bin/wtp");
         expect(t.err()).toContain("worktree-pool setup");
     });

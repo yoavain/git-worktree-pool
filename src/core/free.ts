@@ -5,7 +5,7 @@ import { runGit, tryGit } from "./git.js";
 import { withPoolLock } from "./lock.js";
 import { markerPath } from "./naming.js";
 import { parseStatusV2 } from "./parse.js";
-import { loadPool, problemLabel, requireSlot } from "./pool.js";
+import { loadPool, problemLabel, requireSlot, type Slot } from "./pool.js";
 
 export interface SlotInspection {
   branch: string | null;
@@ -48,12 +48,26 @@ export function describeLoss(info: SlotInspection): string[] {
     return lines;
 }
 
-export async function free(ctx: Context, index: number, opts: { force?: boolean } = {}): Promise<FreeResult> {
+// The refusals that need no lock. The command layer runs them before teardown, so a refusal comes first.
+export function assertFreeable(slot: Slot, index: number, force: boolean): void {
+    if (slot.state === "broken") throw new UserError(`Slot ${index} is broken (${problemLabel(slot.problem)}). Run wtp doctor.`);
+    if (slot.locked && !force) throw new UserError(`Slot ${index} is locked by git worktree lock. Pass --force to free it.`);
+}
+
+// Teardown runs outside the lock. After it, the slot must still hold the branch that the teardown saw.
+export function assertUnchanged(slot: Slot, index: number, expectBranch: string | null | undefined): void {
+    if (expectBranch === undefined) return;
+    if (slot.state !== "active" || slot.branch !== expectBranch) {
+        throw new UserError(`Slot ${index} changed while its teardown ran. Nothing else changed.`);
+    }
+}
+
+export async function free(ctx: Context, index: number, opts: { force?: boolean; expectBranch?: string | null } = {}): Promise<FreeResult> {
     return withPoolLock(ctx.poolRoot, async () => {
         const slot = requireSlot(await loadPool(ctx), index, "free");
+        assertUnchanged(slot, index, opts.expectBranch);
         if (slot.state === "free") return { index, path: slot.path, alreadyFree: true };
-        if (slot.state === "broken") throw new UserError(`Slot ${index} is broken (${problemLabel(slot.problem)}). Run wtp doctor.`);
-        if (slot.locked && !opts.force) throw new UserError(`Slot ${index} is locked by git worktree lock. Pass --force to free it.`);
+        assertFreeable(slot, index, Boolean(opts.force));
 
         await runGit(["reset", "--hard", "--quiet"], slot.path);
         await runGit(["clean", "-fd", "--quiet"], slot.path);

@@ -1,6 +1,6 @@
 import path from "node:path";
 import { resolveContext } from "../../core/context.js";
-import { deleteSlot } from "../../core/delete.js";
+import { assertDeletable, deleteSlot } from "../../core/delete.js";
 import { UserError } from "../../core/errors.js";
 import { describeLoss, inspectSlot } from "../../core/free.js";
 import { isInside } from "../../core/naming.js";
@@ -8,6 +8,7 @@ import { loadPool, requireSlot } from "../../core/pool.js";
 import { deletedText } from "../../ui/labels.js";
 import { parseIndex } from "../args.js";
 import type { Io } from "../io.js";
+import { afterTeardown, cliTeardown } from "../lifecycle.js";
 import type { Args } from "../main.js";
 import { showPoolAfter } from "../move.js";
 
@@ -46,11 +47,22 @@ export async function deleteCommand(args: Args, io: Io): Promise<number> {
         }
     }
 
-    const r = await deleteSlot(ctx, index, {
+    const tore = slot.state === "active" && !args.values["no-teardown"];
+    let teardown: "ran" | "skipped" | "interrupted" = "skipped";
+    if (tore) {
+        assertDeletable(slot, index, force);
+        teardown = await cliTeardown(ctx.root, slot, io);
+        if (teardown === "interrupted") {
+            io.stderr.write(`Teardown interrupted. Slot ${index} was not deleted.\n`);
+            return 1;
+        }
+    }
+    const r = await afterTeardown(teardown === "ran", () => deleteSlot(ctx, index, {
         discard: true,
         unlock: force,
-        deleteBranch: args.values.branch ? (force ? "force" : "safe") : false
-    });
+        deleteBranch: args.values.branch ? (force ? "force" : "safe") : false,
+        expectBranch: tore ? slot.branch : undefined
+    }));
     for (const w of r.warnings) io.stderr.write(`! ${w}\n`);
     io.stderr.write(`${deletedText(index, r.branchDeleted ? r.branch : null)}\n`);
     await showPoolAfter(ctx, slot.path, io);
