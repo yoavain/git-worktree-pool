@@ -135,28 +135,54 @@ describe("App", () => {
         expect(t.lastFrame()).toContain("never deletes it");
     });
 
-    it("assigns a suggested branch and exits with cd", async () => {
-        const t = setup();
+    it("assigns a suggested branch, stays open on the new slot, and goes there on Enter", async () => {
+        const assigned: Pool = {
+            ...pool,
+            slots: pool.slots.map((x) => (x.index === 3 ? { ...x, state: "active" as const, branch: "feat/payments-v2", changes: zero } : x))
+        };
+        const t = setup({ reload: vi.fn(async () => assigned) });
         await t.press("a");
         expect(t.actions.listBranches).toHaveBeenCalled();
         await t.press("pay");
         expect(t.lastFrame()).toContain("feat/payments-v2");
         expect(t.lastFrame()).toContain("Target  slot 3 (free, reused)");
+        expect(t.lastFrame()).toContain("⏎ assign  ");
         await t.press(KEY.enter);
         expect(t.actions.assign).toHaveBeenCalledWith("feat/payments-v2");
+        expect(t.onExit).not.toHaveBeenCalled();
+        expect(t.actions.copy).not.toHaveBeenCalled();
+        expect(t.lastFrame()).toContain("Press Enter to go there.");
+        expect(t.selectedLine()).toContain("feat/payments-v2");
+        await t.press(KEY.enter);
         expect(t.actions.copy).toHaveBeenCalledWith("/d/my-repo-wt-pool/my-repo-wt-3");
-        expect(t.onExit).toHaveBeenCalledWith(expect.objectContaining({ cd: "/d/my-repo-wt-pool/my-repo-wt-3", copied: true }));
+        expect(t.onExit).toHaveBeenCalledWith({ cd: "/d/my-repo-wt-pool/my-repo-wt-3", copied: true });
     });
 
-    it("passes the fetch warning and the branch source out of the TUI", async () => {
+    it("shows the fetch warning in the TUI when it stays open", async () => {
+        const t = setup({
+            assign: vi.fn(async (): Promise<AssignResult> => ({
+                index: 3, path: "/d/my-repo-wt-pool/my-repo-wt-3", reused: false,
+                plan: { kind: "new", name: "feat/colleague", base: "main" }, createdPoolRoot: false,
+                warnings: ["Could not fetch from origin (offline). wtp used the local refs."]
+            }))
+        });
+        await t.press("a", "feat/colleague", KEY.enter);
+        expect(t.lastFrame()).toContain("Could not fetch");
+        expect(t.onExit).not.toHaveBeenCalled();
+    });
+
+    it("assigns and exits with cd when wtp assign opened the TUI, and passes the notes out", async () => {
         const t = setup({
             assign: vi.fn(async (): Promise<AssignResult> => ({
                 index: 3, path: "/d/my-repo-wt-pool/my-repo-wt-3", reused: false,
                 plan: { kind: "new", name: "feat/colleague", base: "main" }, createdPoolRoot: true,
                 warnings: ["Could not fetch from origin (offline). wtp used the local refs."]
             }))
-        });
-        await t.press("a", "feat/colleague", KEY.enter);
+        }, { initialMode: "assign" });
+        await tick();
+        expect(t.lastFrame()).toContain("⏎ assign + cd");
+        await t.press("feat/colleague", KEY.enter);
+        expect(t.actions.copy).toHaveBeenCalledWith("/d/my-repo-wt-pool/my-repo-wt-3");
         const result = t.onExit.mock.calls[0]?.[0];
         expect(result.cd).toBe("/d/my-repo-wt-pool/my-repo-wt-3");
         expect(result.notes).toEqual([
@@ -164,6 +190,17 @@ describe("App", () => {
             "! Could not fetch from origin (offline). wtp used the local refs.",
             "branch feat/colleague (new from main) → slot 3 (new)"
         ]);
+    });
+
+    it("does not suggest a branch that a slot already has", async () => {
+        const t = setup({ listBranches: vi.fn(async () => [
+            { name: "fix/null-token", source: "local" as const },
+            { name: "feat/payments-v2", source: "local" as const }
+        ]) });
+        await t.press("a");
+        const popup = t.lastFrame()!.slice(t.lastFrame()!.indexOf("Assign a worktree"));
+        expect(popup).toContain("feat/payments-v2");
+        expect(popup).not.toContain("fix/null-token");
     });
 
     it("assigns a new branch by its typed name", async () => {

@@ -1,6 +1,6 @@
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { findCheckout, listBranches, resolveBranch } from "../../src/core/branch.js";
+import { findCheckout, listBranches, resolveBranch, takenBranches } from "../../src/core/branch.js";
 import { readConfig } from "../../src/core/config.js";
 import { resolveContext } from "../../src/core/context.js";
 import { loadPool } from "../../src/core/pool.js";
@@ -84,6 +84,7 @@ describe("findCheckout and listBranches", () => {
         expect(findCheckout(pool, "feat/a")?.index).toBe(1);
         expect(findCheckout(pool, "side")?.index).toBeNull();
         expect(findCheckout(pool, "nope")).toBeNull();
+        expect([...takenBranches(pool)].sort()).toEqual(["feat/a", "main", "side"]);
     });
 
     it("lists local branches first and removes remote duplicates", async () => {

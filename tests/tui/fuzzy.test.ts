@@ -39,6 +39,15 @@ describe("suggestBranches", () => {
     });
 
     it("respects the limit before the new-branch row", () => {
-        expect(suggestBranches("a", choices, 2)).toHaveLength(3);
+        expect(suggestBranches("a", choices, { limit: 2 })).toHaveLength(3);
+    });
+
+    it("hides branches that a worktree already has checked out", () => {
+        const taken = new Set(["main", "feat/payments-v2"]);
+        expect(suggestBranches("", choices, { taken }).map((x) => x.name)).toEqual(["feat/payment-retry", "fix/pay"]);
+    });
+
+    it("does not offer a new branch with the name of a taken branch", () => {
+        expect(suggestBranches("main", choices, { taken: new Set(["main"]) })).toEqual([]);
     });
 });

@@ -58,6 +58,14 @@ export async function resolveBranch(ctx: Context, name: string, cfg: WtpConfig):
     return { plan: { kind: "new", name, base: cfg.base }, warning };
 }
 
+// Branches that a slot (the clone too) or a worktree outside the pool has checked out. The same rule as findCheckout.
+export function takenBranches(pool: Pool): Set<string> {
+    const taken = new Set<string>();
+    for (const s of pool.slots) if (s.branch && (s.state === "active" || s.state === "root")) taken.add(s.branch);
+    for (const x of pool.external) if (x.branch) taken.add(x.branch);
+    return taken;
+}
+
 export function findCheckout(pool: Pool, name: string): { index: number | null; path: string } | null {
     const slot = pool.slots.find((s) => s.branch === name && (s.state === "active" || s.state === "root"));
     if (slot) return { index: slot.index, path: slot.path };

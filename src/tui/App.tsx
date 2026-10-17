@@ -1,7 +1,7 @@
 import { Box, Text, useApp, useInput, useStdout } from "ink";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { AssignResult } from "../core/assign.js";
-import type { BranchChoice } from "../core/branch.js";
+import { takenBranches, type BranchChoice } from "../core/branch.js";
 import { BranchInUseError } from "../core/errors.js";
 import { describeLoss, type SlotInspection } from "../core/free.js";
 import { chooseSlot, cloneRefusal, type Pool, type SlotAction } from "../core/pool.js";
@@ -68,6 +68,7 @@ const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 export function App({ initialPool, actions, initialMode = "list", platform, onExit }: AppProps) {
     const { exit } = useApp();
+    const opensAssign = initialMode === "assign";
     const { stdout } = useStdout();
     const width = stdout?.columns ?? 100;
 
@@ -78,6 +79,7 @@ export function App({ initialPool, actions, initialMode = "list", platform, onEx
     const [branches, setBranches] = useState<BranchChoice[]>([]);
     const [exitCd, setExitCd] = useState<string | null>(null);
     const rows = useMemo(() => visibleRows(buildRows(pool, { loading: "…", glyphs: TUI_GLYPHS }), filter), [pool, filter]);
+    const taken = useMemo(() => takenBranches(pool), [pool]);
     const [selected, setSelected] = useState(() => initialSelection(rows));
     const digits = useRef(createDigitBuffer());
     const row: Row | undefined = rows[selected];
@@ -176,25 +178,40 @@ export function App({ initialPool, actions, initialMode = "list", platform, onEx
         }
     }
 
+    // Clears the filter and selects the row of the slot, so the next Enter goes there.
+    function selectSlot(p: Pool, index: number) {
+        setFilter("");
+        const i = buildRows(p, { loading: "…", glyphs: TUI_GLYPHS }).findIndex((x) => x.slotIndex === index);
+        if (i >= 0) setSelected(i);
+    }
+
     async function submitAssign(name: string, back: Mode) {
         if (!name) return;
         setMode({ kind: "working", label: `Assigning ${name}…` });
         try {
             const r = await actions.assign(name);
-            await actions.copy(r.path);
-            finish(r.path, true, [
+            const notes = [
                 ...(r.createdPoolRoot ? [`created the pool folder ${pool.ctx.poolRoot}`] : []),
                 ...r.warnings.map((w) => `! ${w}`),
                 assignSummary(name, r, TUI_GLYPHS)
-            ]);
+            ];
+            // "wtp assign" asked for one assign, so it exits into the slot. In the list only Enter, q, and Esc exit.
+            if (opensAssign) {
+                await actions.copy(r.path);
+                finish(r.path, true, notes);
+                return;
+            }
+            const fresh = await actions.reload();
+            setPool(fresh);
+            selectSlot(fresh, r.index);
+            setMode({ kind: "list" });
+            setMessage({ tone: r.warnings.length ? "info" : "ok", text: `${notes.join(" ")}. Press Enter to go there.` });
+            setPool(await actions.loadChanges(fresh));
         }
         catch (e) {
             if (e instanceof BranchInUseError && e.index !== null) {
                 setMode({ kind: "list" });
-                setFilter("");
-                const all = buildRows(pool, { loading: "…", glyphs: TUI_GLYPHS });
-                const i = all.findIndex((x) => x.slotIndex === e.index);
-                if (i >= 0) setSelected(i);
+                selectSlot(pool, e.index);
                 setMessage({ tone: "info", text: `${name} is already in slot ${e.index}. Press Enter to go there.` });
             }
             else {
@@ -227,7 +244,7 @@ export function App({ initialPool, actions, initialMode = "list", platform, onEx
         }
 
         if (mode.kind === "assign") {
-            const suggestions = suggestBranches(mode.query, branches);
+            const suggestions = suggestBranches(mode.query, branches, { taken });
             if (key.escape) setMode({ kind: "list" });
             else if (key.return) void submitAssign(suggestions[mode.selected]?.name ?? mode.query.trim(), mode);
             else if (key.upArrow) setMode({ ...mode, selected: moveSelection(mode.selected, -1, suggestions.length) });
@@ -307,7 +324,7 @@ export function App({ initialPool, actions, initialMode = "list", platform, onEx
     });
 
     const next = nextAssignHint(pool, TUI_GLYPHS);
-    const suggestions = mode.kind === "assign" ? suggestBranches(mode.query, branches) : [];
+    const suggestions = mode.kind === "assign" ? suggestBranches(mode.query, branches, { taken }) : [];
 
     return (
         <Box flexDirection="column">
@@ -318,7 +335,7 @@ export function App({ initialPool, actions, initialMode = "list", platform, onEx
             {filter || mode.kind === "filter" ? <Text color="cyan">/{filter}{mode.kind === "filter" ? "▌" : ""}</Text> : null}
             <Text dimColor>{next}</Text>
             {mode.kind === "assign" ? (
-                <AssignPopup query={mode.query} suggestions={suggestions} selected={mode.selected} target={slotTarget(chooseSlot(pool))} />
+                <AssignPopup query={mode.query} suggestions={suggestions} selected={mode.selected} target={slotTarget(chooseSlot(pool))} exits={opensAssign} />
             ) : null}
             {mode.kind === "confirmCdFree" ? (
                 <Popup title={`Slot ${mode.row.index} is free`} tone="info" lines={["It has no branch. Go there anyway?"]} keys="y go there    n cancel" />

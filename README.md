@@ -67,7 +67,7 @@ wtp works from the clone, from the pool folder, and from any slot.
 | `↑` `↓`, `k` `j` | Move the selection |
 | `0`-`9` | Jump to a slot index |
 | `Enter` | Move the shell to the slot and exit |
-| `a` | Assign a branch |
+| `a` | Assign a branch. The suggestions leave out branches that a worktree already has. The TUI stays open with the new slot selected; Enter goes there. |
 | `f` | Free the slot |
 | `d` | Delete the slot |
 | `c` | Copy the path |

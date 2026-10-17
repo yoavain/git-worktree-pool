@@ -27,15 +27,22 @@ export function fuzzyScore(query: string, text: string): number | null {
     return score - t.length * 0.01;
 }
 
-export function suggestBranches(query: string, choices: BranchChoice[], limit = 8): Suggestion[] {
+// taken: branches that a worktree has checked out. Assign can't use them, so they are not offered.
+export function suggestBranches(
+    query: string,
+    choices: BranchChoice[],
+    opts: { taken?: ReadonlySet<string>; limit?: number } = {}
+): Suggestion[] {
+    const taken = opts.taken ?? new Set<string>();
     const scored = choices
+        .filter((c) => !taken.has(c.name))
         .map((c) => ({ c, score: fuzzyScore(query, c.name) }))
         .filter((x): x is { c: BranchChoice; score: number } => x.score !== null)
         .sort((a, b) =>
             b.score - a.score
       || (a.c.source === b.c.source ? 0 : a.c.source === "local" ? -1 : 1)
       || a.c.name.localeCompare(b.c.name))
-        .slice(0, limit)
+        .slice(0, opts.limit ?? 8)
         .map((x): Suggestion => ({ name: x.c.name, source: x.c.source }));
     const typed = query.trim();
     if (typed && !choices.some((c) => c.name === typed)) scored.push({ name: typed, source: "new" });

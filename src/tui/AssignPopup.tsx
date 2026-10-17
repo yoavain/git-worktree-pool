@@ -7,7 +7,7 @@ const SOURCE: Record<Suggestion["source"], { label: string; color: string }> = {
     new: { label: "new", color: "green" }
 };
 
-export function AssignPopup(props: { query: string; suggestions: Suggestion[]; selected: number; target: string }) {
+export function AssignPopup(props: { query: string; suggestions: Suggestion[]; selected: number; target: string; exits: boolean }) {
     return (
         <Box flexDirection="column" borderStyle="round" borderColor="cyan" paddingX={1} marginTop={1}>
             <Text bold color="cyan">Assign a worktree</Text>
@@ -25,7 +25,7 @@ export function AssignPopup(props: { query: string; suggestions: Suggestion[]; s
             ))}
             <Text> </Text>
             <Text dimColor>Target  {props.target}</Text>
-            <Text dimColor>⏎ assign + cd  ⇥ complete  ↑↓ choose  Esc cancel</Text>
+            <Text dimColor>{props.exits ? "⏎ assign + cd" : "⏎ assign"}  ⇥ complete  ↑↓ choose  Esc cancel</Text>
         </Box>
     );
 }

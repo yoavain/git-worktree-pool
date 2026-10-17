@@ -4,7 +4,7 @@ const KEYS: [string, string][] = [
     ["↑ ↓  k j", "move the selection"],
     ["0-9", "jump to a slot index"],
     ["Enter", "cd to the slot and exit (copies the path)"],
-    ["a", "assign a branch"],
+    ["a", "assign a branch (Enter then goes there)"],
     ["f", "free the slot"],
     ["d", "delete the slot"],
     ["c", "copy the path"],

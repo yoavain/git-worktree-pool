@@ -40,7 +40,7 @@ describe("TUI components", () => {
 
     it("draws the assign popup with sources and the target slot", () => {
         const frame = render(
-            <AssignPopup query="feat/pay" selected={1} target="slot 3 (free, reused)"
+            <AssignPopup query="feat/pay" selected={1} target="slot 3 (free, reused)" exits={false}
                 suggestions={[{ name: "feat/payments-v2", source: "local" }, { name: "feat/payment-retry", source: "remote" }, { name: "feat/pay", source: "new" }]} />
         ).lastFrame()!;
         expect(frame).toContain("Branch  feat/pay");
