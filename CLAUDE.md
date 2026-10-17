@@ -4,14 +4,14 @@ npm CLI + Ink TUI (`wtp`) that hands out reusable git worktrees next to a clone 
 
 ## Checks
 
-* `npm run typecheck`, `npm run eslint`, `npm test` - run all three before you report work done.
+* `npm run type-check`, `npm run eslint`, `npm test` - run all three before you report work done.
 * `npm run test:e2e` - CI only. It installs the packed package globally; under nvm for Windows that writes into the owner's real global install.
 * Test launchers in temp folders, as `tests/platform/launcher-run.test.ts` does. Run `npm i -g` or `worktree-pool setup` here only when the owner asks.
 * `inst.bat` is the owner's local install script. It stays untracked.
 
 ## Tooling
 
-* TypeScript through two npm aliases: `@typescript/native` (TS 7, the `tsc` for build and typecheck) and `typescript` (TS 6, the JS API that typescript-eslint needs).
+* TypeScript through two npm aliases: `@typescript/native` (TS 7, the `tsc` for build and type-check) and `typescript` (TS 6, the JS API that typescript-eslint needs).
 * ESLint flat config (`eslint.config.mjs`): typescript-eslint, import-x, n, security.
 * Vitest (`vitest.config.ts`, `vitest.e2e.config.ts`); Ink + React for the TUI.
 
@@ -27,7 +27,10 @@ npm CLI + Ink TUI (`wtp`) that hands out reusable git worktrees next to a clone 
 * `.gitattributes` pins CRLF for `launchers/wtp.cmd` and `wtp.ps1`, and LF for `launchers/wtp` and `src/bin/wtp.ts`. A CRLF shebang breaks `n/hashbang` on Windows CI.
 * `src/bin/wtp.ts` keeps its `#!/usr/bin/env node` shebang. Without it, npm's shim opens `dist/bin/wtp.js` in an editor. `tests/bin.test.ts` guards it.
 * In `wtp.cmd`: `chcp` and `set /p` stay outside `( )` blocks, and batch files need `call`.
-* Windows PowerShell 5.1 without a console writes stdout in the OEM code page. Tests read non-ASCII paths from a UTF-8 file, not stdout.
+* A Windows PowerShell 5.1 started from pwsh (every GitHub Windows step) inherits pwsh's `PSModulePath` and cannot load `Microsoft.PowerShell.Utility` cmdlets such as `New-TemporaryFile`. Keep `wtp.ps1` to .NET calls and the cmdlets it uses now; `tests/platform/launcher-run.test.ts` runs 5.1 with pwsh's `PSModulePath` to catch this.
+* PowerShell tests write their result to a UTF-8 file, not stdout, so the console code page cannot change it.
+* Changing a launcher's content means raising `LAUNCHER_VERSION` and the `wtp-launcher N` marker in all three files. Setup replaces only launchers older than that number.
+* Edit the CRLF launchers with an editor or node, never `sed -i`: Git Bash's sed strips the `\r`.
 * Plain CLI output is ASCII: `src/ui/glyphs.ts` `PLAIN_GLYPHS` is the default. Only the Ink TUI passes `TUI_GLYPHS`.
 * The Bash tool mangles backslash paths passed to cmd/powershell. Drive real-console checks with a `.ps1` file or `-EncodedCommand`.
 

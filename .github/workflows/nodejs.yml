@@ -39,7 +39,7 @@ jobs:
           CI: true
 
       - name: Type Check
-        run: npm run typecheck
+        run: npm run type-check
 
       - name: Lint
         run: npm run eslint

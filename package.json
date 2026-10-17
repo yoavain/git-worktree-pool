@@ -1,6 +1,6 @@
 {
   "name": "git-worktree-pool",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Manage a pool of reusable git worktrees from the command line or a TUI",
   "type": "module",
   "bin": {

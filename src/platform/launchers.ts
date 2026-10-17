@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { findAllOnPath, findOnPath, isFile, pathApi, pathDirs, pushUniquePath, sameDir, type SearchDeps } from "./path-search.js";
 import type { ProcInfo } from "./process-tree.js";
 
-export const LAUNCHER_VERSION = 1;
+export const LAUNCHER_VERSION = 2;
 export const LAUNCHER_FILES = ["wtp.cmd", "wtp.ps1", "wtp"] as const;
 // Every file name that a shell on Windows could run as "wtp".
 export const WTP_EXTS_WIN = [".exe", ".com", ".bat", ".cmd", ".ps1", ""];

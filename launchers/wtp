@@ -1,5 +1,5 @@
 #!/bin/sh
-# wtp-launcher 1
+# wtp-launcher 2
 # Written by "worktree-pool setup". It runs worktree-pool. A script cannot change its caller's
 # folder; the wtp function in your shell profile does that. WTP_VIA tells worktree-pool which hint to show.
 command -v worktree-pool >/dev/null 2>&1 || { echo "wtp: worktree-pool is not installed. Reinstall git-worktree-pool, or delete $0." >&2; exit 127; }
