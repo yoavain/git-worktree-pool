@@ -303,7 +303,6 @@ export function App({ initialPool, actions, initialMode = "list", platform, onEx
         }
         else if (input === "/") setMode({ kind: "filter" });
         else if (input === "?") setMode({ kind: "help" });
-        else if (input === "r") void reload().then(() => setMessage({ tone: "ok", text: "refreshed" }), fail);
     });
 
     const next = nextAssignHint(pool);

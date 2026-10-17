@@ -59,6 +59,6 @@ describe("TUI components", () => {
 
     it("lists every key in the help screen", () => {
         const frame = render(<Help />).lastFrame()!;
-        for (const k of ["Enter", "assign", "free", "delete", "copy", "filter", "refresh", "quit"]) expect(frame).toContain(k);
+        for (const k of ["Enter", "assign", "free", "delete", "copy", "filter", "quit"]) expect(frame).toContain(k);
     });
 });

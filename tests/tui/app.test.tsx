@@ -209,13 +209,22 @@ describe("App", () => {
         expect(t.lastFrame()).not.toContain("Press any key to go back.");
     });
 
-    it("copies and reloads", async () => {
+    it("copies the path", async () => {
         const t = setup();
         await t.press("c");
         expect(t.actions.copy).toHaveBeenCalledWith("/d/my-repo-wt-pool/my-repo-wt-1");
         expect(t.lastFrame()).toContain("✓ copied");
+    });
+
+    it("has no refresh key: r does nothing, and neither the footer nor the help mentions refresh", async () => {
+        const t = setup();
+        const before = t.lastFrame();
         await t.press("r");
-        expect(t.actions.reload).toHaveBeenCalled();
+        expect(t.actions.reload).not.toHaveBeenCalled();
+        expect(t.lastFrame()).toBe(before);
+        expect(t.lastFrame()).not.toMatch(/refresh/i);
+        await t.press("?");
+        expect(t.lastFrame()).not.toMatch(/refresh/i);
     });
 
     it("has no tab key: t does nothing, and neither the footer nor the help mentions a tab", async () => {

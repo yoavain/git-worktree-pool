@@ -9,7 +9,6 @@ const KEYS: [string, string][] = [
     ["d", "delete the slot"],
     ["c", "copy the path"],
     ["/", "filter by branch"],
-    ["r", "refresh"],
     ["?", "this help"],
     ["q  Esc", "quit without cd"]
 ];

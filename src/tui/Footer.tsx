@@ -5,7 +5,7 @@ export interface Message {
   text: string;
 }
 
-export const KEYS_LIST = "↑↓ move  ⏎ cd  a assign  f free  d delete  c copy  / filter  r refresh  ? help  q quit";
+export const KEYS_LIST = "↑↓ move  ⏎ cd  a assign  f free  d delete  c copy  / filter  ? help  q quit";
 
 const COLOR = { ok: "green", error: "red", info: "cyan" } as const;
 

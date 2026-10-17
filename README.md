@@ -72,7 +72,6 @@ wtp works from the clone, from the pool folder, and from any slot.
 | `d` | Delete the slot |
 | `c` | Copy the path |
 | `/` | Filter by branch |
-| `r` | Refresh |
 | `?` | Help |
 | `q`, `Esc` | Quit |
 
