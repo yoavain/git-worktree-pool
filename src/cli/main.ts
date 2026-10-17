@@ -30,6 +30,8 @@ const OPTIONS = {
     "force": { type: "boolean" },
     "branch": { type: "boolean" },
     "no-cd": { type: "boolean" },
+    "no-setup": { type: "boolean" },
+    "no-teardown": { type: "boolean" },
     "remove": { type: "boolean" },
     "help": { type: "boolean", short: "h" },
     "version": { type: "boolean", short: "v" }

@@ -15,12 +15,13 @@ describe("initScript", () => {
             expect(s).toContain("wtp() {");
             expect(s).toContain("WTP_CWD_FILE=\"$f\" command worktree-pool \"$@\"");
             expect(s).toContain("cygpath -u");
+            expect(s).toContain(`WTP_SHELL=${shell} WTP_CWD_FILE="$f" command worktree-pool "$@"`);
         }
     });
 
     it("defines a fish function", () => {
         expect(initScript("fish")).toContain("function wtp");
-        expect(initScript("fish")).toContain("command worktree-pool $argv");
+        expect(initScript("fish")).toContain("WTP_SHELL=fish WTP_CWD_FILE=$f command worktree-pool $argv");
     });
 });
 

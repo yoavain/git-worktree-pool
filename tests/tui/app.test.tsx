@@ -1,8 +1,9 @@
 import { render } from "ink-testing-library";
 import { describe, expect, it, vi } from "vitest";
+import type { LifecycleFailure, LifecycleResult } from "../../src/cli/lifecycle.js";
 import type { AssignResult } from "../../src/core/assign.js";
 import type { Context } from "../../src/core/context.js";
-import { BranchInUseError } from "../../src/core/errors.js";
+import { BranchInUseError, UserError } from "../../src/core/errors.js";
 import type { Pool, Slot } from "../../src/core/pool.js";
 import { App, type AppProps, type TuiActions } from "../../src/tui/App.js";
 
@@ -42,6 +43,7 @@ function setup(overrides: Partial<TuiActions> = {}, props: Partial<AppProps> = {
             { name: "feat/payment-retry", source: "remote" as const }
         ]),
         copy: vi.fn(async () => "native" as const),
+        lifecycle: vi.fn(async (): Promise<LifecycleResult> => ({ status: "skipped" })),
         ...overrides
     };
     const onExit = vi.fn();
@@ -96,7 +98,7 @@ describe("App", () => {
         expect(t.lastFrame()).toContain("3 modified and 2 untracked files will be discarded.");
         expect(t.lastFrame()).toContain("moves you to the root");
         await t.press("y");
-        expect(t.actions.free).toHaveBeenCalledWith(1);
+        expect(t.actions.free).toHaveBeenCalledWith(1, { expectBranch: "feature/login-form" });
         expect(t.lastFrame()).toContain("Slot 1 is free.");
         await t.press("q");
         expect(t.onExit).toHaveBeenCalledWith({ cd: "/d/my-repo", copied: false });
@@ -116,7 +118,7 @@ describe("App", () => {
         await t.press(" ");
         expect(t.lastFrame()).toContain("[x] also delete local branch");
         await t.press("y");
-        expect(t.actions.remove).toHaveBeenCalledWith(2, { deleteBranch: true });
+        expect(t.actions.remove).toHaveBeenCalledWith(2, { deleteBranch: true, expectBranch: "fix/null-token" });
         expect(t.lastFrame()).toContain("Slot 2 is deleted.");
     });
 
@@ -289,5 +291,129 @@ describe("App", () => {
         await t.press("f", "y");
         expect(t.lastFrame()).toContain("git reset failed");
         expect(t.onExit).not.toHaveBeenCalled();
+    });
+
+    describe("setup and teardown", () => {
+        const failed = (over: Partial<LifecycleFailure> = {}): LifecycleFailure =>
+            ({ status: "failed", display: "npm install", code: 1, timedOut: false, interrupted: false, tail: "", ...over });
+
+        it("shows progress while setup runs and nothing extra on success", async () => {
+            let finish!: (r: LifecycleResult) => void;
+            const t = setup({ lifecycle: vi.fn((_key, _target, o) => {
+                o.onStart("npm install");
+                return new Promise<LifecycleResult>((r) => {
+                    finish = r;
+                });
+            }) });
+            await t.press("a", "x", KEY.enter);
+            expect(t.lastFrame()).toMatch(/setting up slot 3 · npm install · 0:0\d/);
+            expect(t.actions.lifecycle).toHaveBeenCalledWith("setup", { root: "/d/my-repo", index: 3, path: "/d/my-repo-wt-pool/my-repo-wt-3", branch: "x" }, expect.anything());
+            finish({ status: "ok", display: "npm install" });
+            await tick();
+            expect(t.lastFrame()).toContain("Press Enter to go there.");
+            expect(t.lastFrame()).not.toContain("setting up");
+        });
+
+        it("shows a failed setup and stays open, also from wtp assign", async () => {
+            const t = setup({ lifecycle: vi.fn(async () => failed({ tail: "\u001b[31mnpm ERR! boom\u001b[39m\n" })) }, { initialMode: "assign" });
+            await t.press("x", KEY.enter);
+            expect(t.lastFrame()).toContain("Setup failed in slot 3");
+            expect(t.lastFrame()).toContain("setup failed with exit code 1");
+            expect(t.lastFrame()).toContain("npm ERR! boom");
+            expect(t.lastFrame()).not.toContain("\u001b[31m");
+            expect(t.onExit).not.toHaveBeenCalled();
+            await t.press("z");
+            expect(t.lastFrame()).not.toContain("Setup failed");
+            expect(t.lastFrame()).toContain("Press Enter to go to slot 3.");
+            expect(t.onExit).not.toHaveBeenCalled();
+        });
+
+        it("shows only the last 20 lines of the output", async () => {
+            const tail = Array.from({ length: 30 }, (_, i) => `out ${i}`).join("\n");
+            const t = setup({ lifecycle: vi.fn(async () => failed({ tail })) });
+            await t.press("a", "x", KEY.enter);
+            expect(t.lastFrame()).toContain("out 29");
+            expect(t.lastFrame()).toContain("out 10");
+            expect(t.lastFrame()).not.toMatch(/out 9\b/);
+        });
+
+        it("runs teardown before free and offers free anyway on failure", async () => {
+            const t = setup({ lifecycle: vi.fn(async () => failed({ display: "docker compose down", code: 2 })) });
+            await t.press("f", "y");
+            expect(t.actions.lifecycle).toHaveBeenCalledWith("teardown", { root: "/d/my-repo", index: 1, path: "/d/my-repo-wt-pool/my-repo-wt-1", branch: "feature/login-form" }, expect.anything());
+            expect(t.lastFrame()).toContain("Teardown failed in slot 1");
+            expect(t.lastFrame()).toContain("free anyway");
+            expect(t.actions.free).not.toHaveBeenCalled();
+            await t.press("y");
+            expect(t.actions.free).toHaveBeenCalledWith(1, { expectBranch: "feature/login-form" });
+        });
+
+        it("cancels free after a failed teardown with n", async () => {
+            const t = setup({ lifecycle: vi.fn(async () => failed()) });
+            await t.press("f", "y", "n");
+            expect(t.actions.free).not.toHaveBeenCalled();
+            expect(t.lastFrame()).not.toContain("Teardown failed");
+        });
+
+        it("aborts a running teardown on Ctrl+C and frees nothing", async () => {
+            const t = setup({ lifecycle: vi.fn((_key, _target, o) => new Promise<LifecycleResult>((r) => {
+                o.onStart("docker compose down");
+                o.signal.addEventListener("abort", () => r(failed({ interrupted: true, code: null })));
+            })) });
+            await t.press("f", "y");
+            expect(t.lastFrame()).toContain("tearing down slot 1");
+            await t.press("\u0003");
+            expect(t.lastFrame()).toContain("Teardown interrupted. Slot 1 was not freed.");
+            expect(t.actions.free).not.toHaveBeenCalled();
+            expect(t.onExit).not.toHaveBeenCalled();
+        });
+
+        it("runs teardown before delete and passes the branch", async () => {
+            const t = setup();
+            await t.press("2", "d", "y");
+            expect(t.actions.lifecycle).toHaveBeenCalledWith("teardown", expect.objectContaining({ index: 2, branch: "fix/null-token" }), expect.anything());
+            expect(t.actions.remove).toHaveBeenCalledWith(2, { deleteBranch: false, expectBranch: "fix/null-token" });
+        });
+
+        it("offers delete anyway after a failed teardown", async () => {
+            const t = setup({ lifecycle: vi.fn(async () => failed()) });
+            await t.press("2", "d", "y");
+            expect(t.lastFrame()).toContain("delete anyway");
+            await t.press("y");
+            expect(t.actions.remove).toHaveBeenCalledWith(2, { deleteBranch: false, expectBranch: "fix/null-token" });
+        });
+
+        it("shows no progress line when the repo has no script", async () => {
+            let finish!: (r: LifecycleResult) => void;
+            const t = setup({ lifecycle: vi.fn(() => new Promise<LifecycleResult>((r) => {
+                finish = r;
+            })) });
+            await t.press("a", "x", KEY.enter);
+            expect(t.lastFrame()).not.toContain("setting up");
+            finish({ status: "skipped" });
+            await tick();
+            expect(t.lastFrame()).toContain("Press Enter to go there.");
+        });
+
+        it("says teardown already ran only when one did", async () => {
+            const refuse = vi.fn(async () => {
+                throw new UserError("Close it and run wtp delete 2 again.");
+            });
+            const skipped = setup({ remove: refuse });
+            await skipped.press("2", "d", "y");
+            expect(skipped.lastFrame()).toContain("Close it and run wtp delete 2 again.");
+            expect(skipped.lastFrame()).not.toContain("teardown already ran");
+
+            const ran = setup({ remove: refuse, lifecycle: vi.fn(async (): Promise<LifecycleResult> => ({ status: "ok", display: "x" })) });
+            await ran.press("2", "d", "y");
+            expect(ran.lastFrame()).toContain("Its teardown already ran.");
+        });
+
+        it("runs no teardown for a free slot", async () => {
+            const t = setup();
+            await t.press("3", "d", "y");
+            expect(t.actions.lifecycle).not.toHaveBeenCalled();
+            expect(t.actions.remove).toHaveBeenCalledWith(3, { deleteBranch: false });
+        });
     });
 });

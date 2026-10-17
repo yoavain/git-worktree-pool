@@ -6,10 +6,10 @@ const HELP = `wtp - a pool of reusable git worktrees
 Usage:
   wtp                        open the TUI (plain list when not in a terminal)
   wtp list | ls              print the slot table  [--json] [--no-changes]
-  wtp assign <branch>        give a branch a slot, copy its path, cd to it  [--no-cd]
+  wtp assign <branch>        give a branch a slot, copy its path, cd to it  [--no-cd] [--no-setup]
   wtp switch <index|branch>  copy the slot path and cd to it
-  wtp free <index>           reset a slot and mark it free  [--yes] [--force]
-  wtp delete <index>         remove a slot  [--yes] [--branch] [--force]
+  wtp free <index>           reset a slot and mark it free  [--yes] [--force] [--no-teardown]
+  wtp delete <index>         remove a slot  [--yes] [--branch] [--force] [--no-teardown]
   wtp path <index|branch>    print a slot path
   wtp setup                  set up the wtp command for your shells, once  [--yes] [--remove]
   wtp doctor                 report and repair pool problems

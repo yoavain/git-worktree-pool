@@ -85,6 +85,14 @@ describe("deleteSlot", () => {
         expect(existsSync(stray)).toBe(true);
     });
 
+    it("stops when the slot changed while its teardown ran", async () => {
+        const one = await fx.addWorktree(1, "feat/a");
+        await expect(deleteSlot(await ctx(), 1, { expectBranch: "other" })).rejects.toThrow("Slot 1 changed while its teardown ran. Nothing else changed.");
+        expect(existsSync(one)).toBe(true);
+        await fx.markFree(1);
+        await expect(deleteSlot(await ctx(), 1, { expectBranch: "feat/a" })).rejects.toThrow(/changed while its teardown ran/);
+    });
+
     it("needs unlock for a locked slot", async () => {
         const one = await fx.addWorktree(1, "feat/a");
         await fx.git(fx.root, "worktree", "lock", one);

@@ -67,11 +67,12 @@ beforeAll(async () => {
     for (const d of [launcherDir, binDir, target, umlautTarget]) await mkdir(d, { recursive: true });
     for (const f of NAMES) await copyFile(path.join(LAUNCHERS, f), path.join(launcherDir, f));
     await chmod(path.join(launcherDir, "wtp"), 0o755);
-    // The fake worktree-pool writes FAKE_TARGET to WTP_CWD_FILE, records WTP_VIA, and exits FAKE_EXIT.
+    // The fake worktree-pool writes FAKE_TARGET to WTP_CWD_FILE, records WTP_VIA and WTP_SHELL, and exits FAKE_EXIT.
     const sh = [
         "#!/bin/sh",
         "[ -n \"$FAKE_TARGET\" ] && printf '%s' \"$FAKE_TARGET\" > \"$WTP_CWD_FILE\"",
         "[ -n \"$FAKE_VIA_FILE\" ] && printf '%s' \"$WTP_VIA\" > \"$FAKE_VIA_FILE\"",
+        "[ -n \"$FAKE_SHELL_FILE\" ] && printf '%s' \"$WTP_SHELL\" > \"$FAKE_SHELL_FILE\"",
         "exit \"${FAKE_EXIT:-0}\"",
         ""
     ].join("\n");
@@ -83,6 +84,7 @@ beforeAll(async () => {
         const cmd = "@echo off\r\n"
             + "if not \"%FAKE_RAN_FILE%\"==\"\" node -e \"require('fs').writeFileSync(process.env.FAKE_RAN_FILE, 'cwd file: ' + (process.env.WTP_CWD_FILE || '(unset)'))\"\r\n"
             + "if not \"%FAKE_TARGET%\"==\"\" node -e \"require('fs').writeFileSync(process.env.WTP_CWD_FILE, process.env.FAKE_TARGET)\"\r\n"
+            + "if not \"%FAKE_SHELL_FILE%\"==\"\" node -e \"require('fs').writeFileSync(process.env.FAKE_SHELL_FILE, process.env.WTP_SHELL || '')\"\r\n"
             + "exit /b %FAKE_EXIT%\r\n";
         await writeFile(path.join(binDir, "worktree-pool.cmd"), cmd);
     }
@@ -114,7 +116,7 @@ describe("launcher files", () => {
         for (const f of NAMES) {
             const text = await readFile(path.join(LAUNCHERS, f), "latin1");
             expect([...text].every((c) => c.charCodeAt(0) < 128)).toBe(true);
-            expect(text).toContain("wtp-launcher 2");
+            expect(text).toContain("wtp-launcher 3");
         }
     });
 });
@@ -145,6 +147,12 @@ describe.runIf(win)("wtp.cmd", () => {
         const r = await cmd("wtp & node -p process.cwd()", env({ FAKE_TARGET: target, WTP_CWD_FILE: preset }));
         expect(samePath(lastLine(r.stdout), tmp)).toBe(true);
         expect(await readFile(preset, "utf8")).toBe(target);
+    });
+
+    it("tells worktree-pool that cmd called it", async () => {
+        const shellFile = path.join(tmp, "shell-cmd.txt");
+        await cmd("wtp", env({ FAKE_SHELL_FILE: shellFile }));
+        expect(await readFile(shellFile, "utf8")).toBe("cmd");
     });
 
     it("explains a missing worktree-pool", async () => {
@@ -181,6 +189,36 @@ describe("wtp.ps1", () => {
             expect(lastLine(r.stdout)).toBe("rc=3");
         });
     }
+
+    // wtp.ps1 runs in the caller's session, so it must put WTP_SHELL back the way it found it.
+    async function shellCheck(exe: string, tag: string, opts: { preset: boolean; nested: boolean; extra?: NodeJS.ProcessEnv }) {
+        const shellFile = path.join(tmp, `shell-${tag}.txt`);
+        const after = path.join(tmp, `after-${tag}.txt`);
+        const setup = opts.preset ? "$env:WTP_SHELL = 'keep'" : "Remove-Item Env:WTP_SHELL -ErrorAction SilentlyContinue";
+        const extra: NodeJS.ProcessEnv = { FAKE_SHELL_FILE: shellFile, ...opts.extra };
+        if (opts.nested) extra.WTP_CWD_FILE = path.join(tmp, `nested-${tag}.txt`);
+        await ps(exe, [setup, "wtp", `[IO.File]::WriteAllText('${after}', [string]$env:WTP_SHELL)`].join("; "), env(extra));
+        return { passed: await read(shellFile), after: await read(after) };
+    }
+
+    for (const [exe, ok, host] of [["pwsh", pwshOk, "pwsh.exe"], ["powershell.exe", winPsOk, "powershell.exe"]] as const) {
+        it.runIf(ok)(`tells worktree-pool which PowerShell called it (${exe})`, async () => {
+            const r = await shellCheck(exe, `${exe}-plain`, { preset: false, nested: false });
+            expect(path.win32.basename(r.passed).toLowerCase()).toBe(host);
+            expect(r.after).toBe("");
+        });
+
+        it.runIf(ok)(`restores the session's WTP_SHELL on both paths (${exe})`, async () => {
+            expect((await shellCheck(exe, `${exe}-keep`, { preset: true, nested: false })).after).toBe("keep");
+            expect((await shellCheck(exe, `${exe}-nested`, { preset: true, nested: true })).after).toBe("keep");
+            expect((await shellCheck(exe, `${exe}-nested-unset`, { preset: false, nested: true })).after).toBe("");
+        });
+    }
+
+    it.runIf(winPsOk && pwshModulePath !== null)("names powershell.exe when it inherits the PSModulePath of pwsh", async () => {
+        const r = await shellCheck("powershell.exe", "ps-from-pwsh", { preset: false, nested: false, extra: { PSModulePath: pwshModulePath! } });
+        expect(path.win32.basename(r.passed).toLowerCase()).toBe("powershell.exe");
+    });
 
     // GitHub runs Windows steps in pwsh, and a powershell.exe started from pwsh inherits pwsh's
     // PSModulePath. Windows PowerShell 5.1 then cannot load New-TemporaryFile.
