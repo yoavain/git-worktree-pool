@@ -10,7 +10,7 @@ import { TUI_GLYPHS } from "../ui/glyphs.js";
 import { assignSummary, deletedText, freedText, slotTarget } from "../ui/labels.js";
 import { buildRows, nextAssignHint, type Row } from "../ui/table.js";
 import { AssignPopup } from "./AssignPopup.js";
-import { Footer, KEYS_LIST, type Message } from "./Footer.js";
+import { Footer, KEYS_FILTER, KEYS_LIST, type KeyHint, type Message } from "./Footer.js";
 import { suggestBranches } from "./fuzzy.js";
 import { Help } from "./Help.js";
 import { PoolTable } from "./PoolTable.js";
@@ -53,15 +53,16 @@ type Mode =
   | { kind: "confirmFree"; row: Row; lines: string[] }
   | { kind: "confirmDelete"; row: Row; lines: string[]; deleteBranch: boolean };
 
-const FOOTER_KEYS: Record<Mode["kind"], string> = {
+// Modes with a popup show their keys in the popup, so the footer shows none.
+const FOOTER_KEYS: Record<Mode["kind"], readonly KeyHint[]> = {
     list: KEYS_LIST,
-    filter: "type to filter  ⏎ keep  Esc clear",
-    help: "",
-    working: "",
-    assign: "",
-    confirmCdFree: "",
-    confirmFree: "",
-    confirmDelete: ""
+    filter: KEYS_FILTER,
+    help: [],
+    working: [],
+    assign: [],
+    confirmCdFree: [],
+    confirmFree: [],
+    confirmDelete: []
 };
 
 const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e));
@@ -329,7 +330,7 @@ export function App({ initialPool, actions, initialMode = "list", platform, onEx
     return (
         <Box flexDirection="column">
             <Text>
-                <Text color="cyan" bold>wtp</Text>  <Text bold>{pool.ctx.repoName}</Text>  <Text dimColor>pool {pool.ctx.poolRoot}</Text>
+                <Text color="cyan" bold inverse>{" wtp "}</Text> <Text bold>{pool.ctx.repoName}</Text>  <Text dimColor>pool {pool.ctx.poolRoot}</Text>
             </Text>
             <PoolTable rows={rows} selected={selected} width={width} />
             {filter || mode.kind === "filter" ? <Text color="cyan">/{filter}{mode.kind === "filter" ? "▌" : ""}</Text> : null}
@@ -338,17 +339,17 @@ export function App({ initialPool, actions, initialMode = "list", platform, onEx
                 <AssignPopup query={mode.query} suggestions={suggestions} selected={mode.selected} target={slotTarget(chooseSlot(pool))} exits={opensAssign} />
             ) : null}
             {mode.kind === "confirmCdFree" ? (
-                <Popup title={`Slot ${mode.row.index} is free`} tone="info" lines={["It has no branch. Go there anyway?"]} keys="y go there    n cancel" />
+                <Popup title={`Slot ${mode.row.index} is free`} tone="info" lines={["It has no branch. Go there anyway?"]} keys={[["y", "go there"], ["n", "cancel"]]} />
             ) : null}
             {mode.kind === "confirmFree" ? (
-                <Popup title={`Free slot ${mode.row.index}?`} tone="warn" lines={[`${mode.row.folder} · ${mode.row.branch}`, ...mode.lines]} keys="y discard and free    n cancel" />
+                <Popup title={`Free slot ${mode.row.index}?`} tone="warn" lines={[`${mode.row.folder} · ${mode.row.branch}`, ...mode.lines]} keys={[["y", "discard and free"], ["n", "cancel"]]} />
             ) : null}
             {mode.kind === "confirmDelete" ? (
                 <Popup
                     title={`Delete slot ${mode.row.index}?`}
                     tone="danger"
                     lines={[`${mode.row.folder} · ${mode.row.branch}`, ...mode.lines]}
-                    keys="y delete    n cancel"
+                    keys={[["y", "delete"], ["n", "cancel"]]}
                     checkbox={mode.row.tone === "active" ? { label: `also delete local branch ${mode.row.branch}`, checked: mode.deleteBranch } : undefined}
                 />
             ) : null}

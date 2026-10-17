@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { AssignPopup } from "../../src/tui/AssignPopup.js";
 import { Footer, KEYS_LIST } from "../../src/tui/Footer.js";
 import { Help } from "../../src/tui/Help.js";
-import { PoolTable } from "../../src/tui/PoolTable.js";
+import { PoolTable, toneColor } from "../../src/tui/PoolTable.js";
 import { Popup } from "../../src/tui/Popup.js";
 import type { Row } from "../../src/ui/table.js";
 
@@ -14,13 +14,22 @@ const rows: Row[] = [
 ];
 
 describe("TUI components", () => {
-    it("draws the table with a header and a selection marker", () => {
+    it("draws the table in a frame, with a header, a rule, and a selection marker", () => {
         const frame = render(<PoolTable rows={rows} selected={2} width={100} />).lastFrame()!;
         const lines = frame.split("\n");
-        expect(lines[0]).toMatch(/#\s+BRANCH\s+FOLDER\s+CHANGES\s+STATE/);
-        expect(lines[3]).toContain("▶");
-        expect(lines[3]).toContain("free");
-        expect(lines[2]).not.toContain("▶");
+        expect(lines[0]).toMatch(/^╭─+╮$/);
+        expect(lines[1]).toMatch(/^│ {3}#\s+BRANCH\s+FOLDER\s+CHANGES\s+STATE\s*│$/);
+        expect(lines[2]).toMatch(/^│ ─+ │$/);
+        expect(lines[5]).toContain("▶");
+        expect(lines[5]).toContain("free");
+        expect(lines[4]).not.toContain("▶");
+        expect(lines.at(-1)).toMatch(/^╰─+╯$/);
+    });
+
+    it("keeps the root row in the normal text color", () => {
+        expect(toneColor(rows[0]!)).toBeUndefined();
+        expect(toneColor(rows[1]!)).toBe("cyan");
+        expect(toneColor(rows[2]!)).toBe("yellow");
     });
 
     it("drops the folder column when the terminal is narrow", () => {
@@ -29,13 +38,13 @@ describe("TUI components", () => {
 
     it("draws a popup with lines, keys, and a checkbox", () => {
         const frame = render(
-            <Popup title="Delete slot 1?" tone="danger" lines={["The folder is removed from disk."]} keys="y delete  n cancel"
+            <Popup title="Delete slot 1?" tone="danger" lines={["The folder is removed from disk."]} keys={[["y", "delete"], ["n", "cancel"]]}
                 checkbox={{ label: "also delete local branch feature/login-form", checked: true }} />
         ).lastFrame()!;
         expect(frame).toContain("Delete slot 1?");
         expect(frame).toContain("The folder is removed from disk.");
         expect(frame).toContain("[x] also delete local branch");
-        expect(frame).toContain("y delete");
+        expect(frame).toContain("y delete    n cancel");
     });
 
     it("draws the assign popup with sources and the target slot", () => {
@@ -54,7 +63,12 @@ describe("TUI components", () => {
     it("draws the footer message and keys", () => {
         const frame = render(<Footer message={{ tone: "ok", text: "✓ copied /d/p/1" }} keys={KEYS_LIST} />).lastFrame()!;
         expect(frame).toContain("✓ copied /d/p/1");
-        expect(frame).toContain("a assign");
+        expect(frame).toContain("↑↓ move  ⏎ cd  a assign  f free");
+    });
+
+    it("draws the keys as key and label pairs", () => {
+        const frame = render(<Footer message={null} keys={[["⏎", "keep"], ["Esc", "clear"]]} />).lastFrame()!;
+        expect(frame.trim()).toBe("⏎ keep  Esc clear");
     });
 
     it("lists every key in the help screen", () => {

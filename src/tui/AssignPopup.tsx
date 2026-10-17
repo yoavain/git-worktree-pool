@@ -1,5 +1,6 @@
 import { Box, Text } from "ink";
 import type { Suggestion } from "./fuzzy.js";
+import { KeyHints } from "./KeyHints.js";
 
 const SOURCE: Record<Suggestion["source"], { label: string; color: string }> = {
     local: { label: "local", color: "blue" },
@@ -25,7 +26,7 @@ export function AssignPopup(props: { query: string; suggestions: Suggestion[]; s
             ))}
             <Text> </Text>
             <Text dimColor>Target  {props.target}</Text>
-            <Text dimColor>{props.exits ? "⏎ assign + cd" : "⏎ assign"}  ⇥ complete  ↑↓ choose  Esc cancel</Text>
+            <KeyHints keys={[["⏎", props.exits ? "assign + cd" : "assign"], ["⇥", "complete"], ["↑↓", "choose"], ["Esc", "cancel"]]} />
         </Box>
     );
 }
