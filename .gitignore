@@ -32,3 +32,4 @@ coverage/
 .eslint-cache/
 *.tgz
 .superpowers/
+.scratch/
