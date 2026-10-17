@@ -6,13 +6,6 @@
   "bin": {
     "worktree-pool": "dist/bin/wtp.js"
   },
-  "files": [
-    "dist",
-    "launchers"
-  ],
-  "engines": {
-    "node": ">=22.12"
-  },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "type-check": "tsc -p tsconfig.json --noEmit",
@@ -21,9 +14,36 @@
     "eslint": "eslint --cache --cache-location ./.eslint-cache/ --cache-strategy content src/ tests/ tests-e2e/ eslint.config.mjs vitest.config.ts vitest.e2e.config.ts",
     "eslint:fix": "npm run eslint -- --fix"
   },
-  "overrides": {
-    "rolldown": "1.2.12"
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yoavain/git-worktree-pool.git"
   },
+  "keywords": [
+    "git",
+    "worktree",
+    "git-worktree",
+    "worktrees",
+    "pool",
+    "cli",
+    "tui",
+    "ink",
+    "developer-tools",
+    "productivity"
+  ],
+  "author": "yoavain",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22.12",
+    "npm": ">=10"
+  },
+  "files": [
+    "dist",
+    "launchers"
+  ],
+  "bugs": {
+    "url": "https://github.com/yoavain/git-worktree-pool/issues"
+  },
+  "homepage": "https://github.com/yoavain/git-worktree-pool#readme",
   "devDependencies": {
     "@eslint/js": "10.0.1",
     "@types/node": "24.6.0",
@@ -45,5 +65,8 @@
   "dependencies": {
     "ink": "7.1.1",
     "react": "19.3.0"
+  },
+  "overrides": {
+    "rolldown": "1.2.12"
   }
 }
