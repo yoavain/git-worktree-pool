@@ -4,14 +4,14 @@ npm CLI + Ink TUI (`wtp`) that hands out reusable git worktrees next to a clone 
 
 ## Checks
 
-* `npm run typecheck`, `npm run eslint`, `npm test` - run all three before you report work done.
+* `npm run type-check`, `npm run eslint`, `npm test` - run all three before you report work done.
 * `npm run test:e2e` - CI only. It installs the packed package globally; under nvm for Windows that writes into the owner's real global install.
 * Test launchers in temp folders, as `tests/platform/launcher-run.test.ts` does. Run `npm i -g` or `worktree-pool setup` here only when the owner asks.
 * `inst.bat` is the owner's local install script. It stays untracked.
 
 ## Tooling
 
-* TypeScript through two npm aliases: `@typescript/native` (TS 7, the `tsc` for build and typecheck) and `typescript` (TS 6, the JS API that typescript-eslint needs).
+* TypeScript through two npm aliases: `@typescript/native` (TS 7, the `tsc` for build and type-check) and `typescript` (TS 6, the JS API that typescript-eslint needs).
 * ESLint flat config (`eslint.config.mjs`): typescript-eslint, import-x, n, security.
 * Vitest (`vitest.config.ts`, `vitest.e2e.config.ts`); Ink + React for the TUI.
 
