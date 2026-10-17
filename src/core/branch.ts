@@ -73,6 +73,13 @@ export function findCheckout(pool: Pool, name: string): { index: number | null; 
     return ext ? { index: null, path: ext.path } : null;
 }
 
+// The worktree that has the branch checked out, by its exact name. Switch and path use it; free and delete do not.
+export function requireCheckout(pool: Pool, name: string): { index: number | null; path: string } {
+    const found = findCheckout(pool, name);
+    if (!found) throw new UserError(`${name} is not in any slot. Run wtp assign ${name}`);
+    return found;
+}
+
 export async function listBranches(ctx: Context, cfg: WtpConfig): Promise<BranchChoice[]> {
     const out = await runGit(["for-each-ref", "--format=%(refname)", "refs/heads", `refs/remotes/${cfg.remote}`], ctx.root);
     const local = new Set<string>();

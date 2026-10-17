@@ -48,9 +48,24 @@ describe("wtp list / path", () => {
         expect(t.err()).toContain("no slot 9");
     });
 
-    it("fails with exit 1 for a bad index", async () => {
+    it("fails with exit 1 for a branch that no worktree has", async () => {
         const t = makeIo(fx.root);
         expect(await main(["path", "x"], t.io)).toBe(1);
+        expect(t.err()).toContain("x is not in any slot. Run wtp assign x");
+    });
+
+    it("prints the path of the slot that has a branch", async () => {
+        const one = await fx.addWorktree(1, "feat/a");
+        const t = makeIo(fx.root);
+        expect(await main(["path", "feat/a"], t.io)).toBe(0);
+        expect(samePath(t.out().trim(), one)).toBe(true);
+    });
+
+    it("matches the branch name exactly, not a part of it", async () => {
+        await fx.addWorktree(1, "feat/a");
+        const t = makeIo(fx.root);
+        expect(await main(["path", "feat"], t.io)).toBe(1);
+        expect(t.err()).toContain("feat is not in any slot");
     });
 
     it("fails with exit 1 for an unknown command", async () => {

@@ -1,17 +1,24 @@
+import { requireCheckout } from "../../core/branch.js";
 import { resolveContext } from "../../core/context.js";
 import { UserError } from "../../core/errors.js";
 import { findSlot, loadPool } from "../../core/pool.js";
-import { parseIndex } from "../args.js";
+import { isIndex, parseIndex } from "../args.js";
 import type { Io } from "../io.js";
 import type { Args } from "../main.js";
 import { moveShellTo } from "../move.js";
 import { canRunTui, tuiCommand } from "./tui.js";
 
 export async function switchCommand(args: Args, io: Io): Promise<number> {
-    if (args.positionals[0] === undefined && canRunTui(io)) return tuiCommand(io, "list");
-    const index = parseIndex(args.positionals[0], "wtp switch <index>");
-    if (args.values["no-cd"]) throw new UserError(`switch always changes the folder. To print the path only, run: wtp path ${index}`);
+    const target = args.positionals[0];
+    if (target === undefined && canRunTui(io)) return tuiCommand(io, "list");
+    if (target === undefined) throw new UserError("Usage: wtp switch <index|branch>");
+    if (args.values["no-cd"]) throw new UserError(`switch always changes the folder. To print the path only, run: wtp path ${target}`);
     const pool = await loadPool(await resolveContext(io.cwd, io.platform));
+    if (!isIndex(target)) {
+        await moveShellTo(requireCheckout(pool, target).path, io, { copy: true, cd: true });
+        return 0;
+    }
+    const index = parseIndex(target, "wtp switch <index|branch>");
     const slot = findSlot(pool, index);
     if (!slot || slot.state === "broken") {
         const valid = pool.slots.filter((s) => s.state !== "broken").map((s) => s.index).join(", ");

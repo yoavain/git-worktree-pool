@@ -109,6 +109,28 @@ describe("mutating commands", () => {
             expect(t.err()).toContain("Valid slots: 0");
         });
 
+        it("switches to the slot that has a branch", async () => {
+            await fx.addWorktree(2, "feat/b");
+            const t = makeIo(fx.root);
+            expect(await main(["switch", "feat/b"], t.io)).toBe(0);
+            expect(samePath(await t.cwdTarget(), slot(2))).toBe(true);
+        });
+
+        it("switches to a worktree outside the pool by its branch", async () => {
+            const outside = path.join(fx.parent, "elsewhere");
+            await fx.git(fx.root, "worktree", "add", "-b", "side", outside, "main");
+            const t = makeIo(fx.root);
+            expect(await main(["switch", "side"], t.io)).toBe(0);
+            expect(samePath(await t.cwdTarget(), outside)).toBe(true);
+        });
+
+        it("says to assign a branch that no worktree has, and stays put", async () => {
+            const t = makeIo(fx.root);
+            expect(await main(["switch", "feat/none"], t.io)).toBe(1);
+            expect(t.err()).toContain("feat/none is not in any slot. Run wtp assign feat/none");
+            expect(await t.cwdTarget()).toBe("");
+        });
+
         it("rejects --no-cd and points to wtp path", async () => {
             await fx.addWorktree(1, "feat/a");
             const t = makeIo(fx.root);

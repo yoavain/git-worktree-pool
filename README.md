@@ -54,10 +54,10 @@ wtp works from the clone, from the pool folder, and from any slot.
 | `wtp` | Opens the TUI. |
 | `wtp list`, `wtp ls` | Prints the slot table. `--json` prints the data. `--no-changes` skips the change counts. |
 | `wtp assign <branch>` | Gives the branch a slot, copies the path, and moves the shell there. `--no-cd` only copies. When the branch is already in a slot, wtp offers to switch there. |
-| `wtp switch <index>` | Copies the slot path and moves the shell there. |
+| `wtp switch <index\|branch>` | Copies the slot path and moves the shell there. A branch name must match exactly. It also reaches a worktree outside the pool. |
 | `wtp free <index>` | Asks, then discards uncommitted changes, releases the branch, and marks the slot free. `--yes` skips the question. `--force` frees a locked slot. |
 | `wtp delete <index>` | Asks, then discards uncommitted changes and removes the slot folder. `--yes` skips the question. `--branch` also deletes the local branch. `--force` allows unmerged branches and locked slots. |
-| `wtp path <index>` | Prints the slot path. |
+| `wtp path <index\|branch>` | Prints the slot path. |
 | `wtp doctor` | Reports pool problems and repairs the safe ones. |
 
 `assign` takes the lowest free slot, or makes a new one. For the branch, it uses the local branch, else the branch on `origin`, else a new branch from your local `main`. wtp does not fetch `main` first.
