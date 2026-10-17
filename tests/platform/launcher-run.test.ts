@@ -77,7 +77,11 @@ beforeAll(async () => {
     await chmod(path.join(binDir, "worktree-pool"), 0o755);
     if (win) {
     // cmd's own echo can't write UTF-8 reliably, so the fake hands the write to node, like the real one.
-        const cmd = "@echo off\r\nif not \"%FAKE_TARGET%\"==\"\" node -e \"require('fs').writeFileSync(process.env.WTP_CWD_FILE, process.env.FAKE_TARGET)\"\r\nexit /b %FAKE_EXIT%\r\n";
+        // FAKE_RAN_FILE records that the fake ran, and with which WTP_CWD_FILE, for failure messages.
+        const cmd = "@echo off\r\n"
+            + "if not \"%FAKE_RAN_FILE%\"==\"\" node -e \"require('fs').writeFileSync(process.env.FAKE_RAN_FILE, 'cwd file: ' + (process.env.WTP_CWD_FILE || '(unset)'))\"\r\n"
+            + "if not \"%FAKE_TARGET%\"==\"\" node -e \"require('fs').writeFileSync(process.env.WTP_CWD_FILE, process.env.FAKE_TARGET)\"\r\n"
+            + "exit /b %FAKE_EXIT%\r\n";
         await writeFile(path.join(binDir, "worktree-pool.cmd"), cmd);
     }
 });
@@ -156,13 +160,22 @@ describe("wtp.ps1", () => {
             // The shell writes its folder to a UTF-8 file, not to stdout. Without a console (CI runners),
             // Windows PowerShell 5.1 encodes stdout in the OEM code page, and the u-umlaut gets lost.
             const where = path.join(tmp, `where-${exe}.txt`);
-            const command = ["wtp", "\"rc=$LASTEXITCODE\"", `[IO.File]::WriteAllText('${where}', (Get-Location).Path)`].join("; ");
+            const which = path.join(tmp, `which-${exe}.txt`);
+            const ran = path.join(tmp, `ran-${exe}.txt`);
+            const command = [
+                `[IO.File]::WriteAllText('${which}', (Get-Command wtp).Source)`,
+                "wtp",
+                "\"rc=$LASTEXITCODE\"",
+                `[IO.File]::WriteAllText('${where}', (Get-Location).Path)`
+            ].join("; ");
             const r = await attempt(exe, ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", command], {
-                env: env({ FAKE_TARGET: umlautTarget }), cwd: tmp
+                env: env({ FAKE_TARGET: umlautTarget, FAKE_RAN_FILE: ran }), cwd: tmp
             });
-            expect(lastLine(r.stdout)).toBe("rc=0");
-            const landed = await readFile(where, "utf8");
-            expect(samePath(landed, umlautTarget), `landed in ${landed}`).toBe(true);
+            const read = (f: string) => readFile(f, "utf8").catch(() => "(no file)");
+            const landed = await read(where);
+            const why = `landed in ${landed}; wtp is ${await read(which)}; fake: ${await read(ran)}; stderr: ${r.stderr.trim() || "(empty)"}`;
+            expect(lastLine(r.stdout), why).toBe("rc=0");
+            expect(samePath(landed, umlautTarget), why).toBe(true);
         });
 
         it.runIf(ok)(`keeps the exit code in ${exe}`, async () => {
