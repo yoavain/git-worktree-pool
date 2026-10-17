@@ -6,7 +6,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { assign } from "../../src/core/assign.js";
 import { resolveContext } from "../../src/core/context.js";
-import { deleteSlot } from "../../src/core/delete.js";
+import { assertNotHeld, deleteSlot } from "../../src/core/delete.js";
 import { markerPath, slotPath } from "../../src/core/naming.js";
 import { loadPool } from "../../src/core/pool.js";
 import { makeRepo, type Fixture } from "../helpers/repo.js";
@@ -117,5 +117,48 @@ describe("deleteSlot", () => {
         await fx.addWorktree(3, "c");
         await deleteSlot(await ctx(), 2);
         expect((await assign(await ctx(), "feat/next")).index).toBe(2);
+    });
+});
+
+describe("assertNotHeld", () => {
+    const busy = () => Object.assign(new Error("busy"), { code: "EBUSY" });
+
+    it("retries a brief lock, then goes on", async () => {
+        let calls = 0;
+        const waits: number[] = [];
+        const rename = async (from: string, to: string) => {
+            calls++;
+            if (calls <= 2) throw busy();
+            void from;
+            void to;
+        };
+        await assertNotHeld("/d/slot", 1, { rename, wait: async (ms) => {
+            waits.push(ms);
+        } });
+        expect(calls).toBe(4); // two refusals, the probe rename, and the rename back
+        expect(waits).toHaveLength(2);
+    });
+
+    it("refuses after about two seconds of retries", async () => {
+        const waits: number[] = [];
+        const rename = async () => {
+            throw busy();
+        };
+        await expect(assertNotHeld("/d/slot", 1, { rename, wait: async (ms) => {
+            waits.push(ms);
+        } })).rejects.toThrow(/A program holds files in it/);
+        const total = waits.reduce((a, b) => a + b, 0);
+        expect(total).toBeGreaterThanOrEqual(1500);
+        expect(total).toBeLessThanOrEqual(2500);
+    });
+
+    it("does not retry an unrelated error", async () => {
+        let calls = 0;
+        const rename = async () => {
+            calls++;
+            throw Object.assign(new Error("gone"), { code: "ENOENT" });
+        };
+        await expect(assertNotHeld("/d/slot", 1, { rename, wait: async () => {} })).rejects.toThrow("gone");
+        expect(calls).toBe(1);
     });
 });

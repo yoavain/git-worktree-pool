@@ -10,7 +10,7 @@ const KEYS: [string, string][] = [
     ["c", "copy the path"],
     ["/", "filter by branch"],
     ["?", "this help"],
-    ["q  Esc", "quit without cd"]
+    ["q  Esc", "quit (moves to the clone if you freed or deleted your slot)"]
 ];
 
 export function Help() {

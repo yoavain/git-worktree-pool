@@ -9,7 +9,7 @@ export interface SearchDeps {
 
 const DEFAULT_PATHEXT = ".COM;.EXE;.BAT;.CMD";
 
-function defaultIsFile(p: string): boolean {
+export function isFile(p: string): boolean {
     try {
         return statSync(p).isFile();
     }
@@ -18,8 +18,13 @@ function defaultIsFile(p: string): boolean {
     }
 }
 
-function pathApi(platform: NodeJS.Platform): path.PlatformPath {
+export function pathApi(platform: NodeJS.Platform): path.PlatformPath {
     return platform === "win32" ? path.win32 : path.posix;
+}
+
+// Adds file to list unless the list has it already in another letter case. Windows paths ignore case.
+export function pushUniquePath(list: string[], file: string): void {
+    if (!list.some((f) => f.toLowerCase() === file.toLowerCase())) list.push(file);
 }
 
 export function pathDirs(deps: SearchDeps): string[] {
@@ -42,13 +47,13 @@ export function pathExts(deps: SearchDeps): string[] {
 // The same order as cmd: each PATH folder in turn, and inside it each extension in turn.
 export function findAllOnPath(name: string, deps: SearchDeps & { exts?: string[] }): string[] {
     const p = pathApi(deps.platform);
-    const isFile = deps.isFile ?? defaultIsFile;
+    const exists = deps.isFile ?? isFile;
     const exts = deps.exts ?? pathExts(deps);
     const hits: string[] = [];
     for (const dir of pathDirs(deps)) {
         for (const ext of exts) {
             const file = p.join(dir, name + ext);
-            if (isFile(file) && !hits.some((h) => h.toLowerCase() === file.toLowerCase())) hits.push(file);
+            if (exists(file)) pushUniquePath(hits, file);
         }
     }
     return hits;

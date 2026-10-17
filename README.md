@@ -50,11 +50,11 @@ wtp works from the clone, from the pool folder, and from any slot.
 | Command | What it does |
 |---|---|
 | `wtp` | Opens the TUI. |
-| `wtp list`, `wtp ls` | Prints the slot table. `--json` prints the data. |
-| `wtp assign <branch>` | Gives the branch a slot, copies the path, and moves the shell there. `--no-cd` only copies. |
+| `wtp list`, `wtp ls` | Prints the slot table. `--json` prints the data. `--no-changes` skips the change counts. |
+| `wtp assign <branch>` | Gives the branch a slot, copies the path, and moves the shell there. `--no-cd` only copies. When the branch is already in a slot, wtp offers to switch there. |
 | `wtp switch <index>` | Copies the slot path and moves the shell there. |
-| `wtp free <index>` | Asks, then discards uncommitted changes, releases the branch, and marks the slot free. `--yes` skips the question. |
-| `wtp delete <index>` | Asks, then removes the slot folder. `--branch` also deletes the local branch. `--force` allows unmerged branches and locked slots. |
+| `wtp free <index>` | Asks, then discards uncommitted changes, releases the branch, and marks the slot free. `--yes` skips the question. `--force` frees a locked slot. |
+| `wtp delete <index>` | Asks, then discards uncommitted changes and removes the slot folder. `--yes` skips the question. `--branch` also deletes the local branch. `--force` allows unmerged branches and locked slots. |
 | `wtp path <index>` | Prints the slot path. |
 | `wtp doctor` | Reports pool problems and repairs the safe ones. |
 
@@ -73,7 +73,7 @@ wtp works from the clone, from the pool folder, and from any slot.
 | `c` | Copy the path |
 | `/` | Filter by branch |
 | `?` | Help |
-| `q`, `Esc` | Quit |
+| `q`, `Esc` | Quit. If you freed or deleted the slot you are in, quit moves you to the clone. |
 
 ## Settings
 

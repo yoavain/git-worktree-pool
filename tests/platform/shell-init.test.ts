@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
-    hasIntegration, initScript, installIntegration, MARKER, parseShell, profileLine, profilePath,
+    hasIntegration, initScript, installIntegration, MARKER, parseShell, PROFILE_MARKER, profileLine, profilePath,
     removeIntegration, shellForSetup
 } from "../../src/platform/shell-init.js";
 
@@ -82,12 +82,22 @@ describe("install, has, and remove", () => {
         await writeFile(rc, "export A=1");
         expect(await installIntegration("bash", deps(true))).toBe("installed");
         expect(await installIntegration("bash", deps(true))).toBe("already");
-        expect(await readFile(rc, "utf8")).toBe(`export A=1\n\n${MARKER}\n${profileLine("bash")}\n`);
+        expect(await readFile(rc, "utf8")).toBe(`export A=1\n\n${PROFILE_MARKER}\n${profileLine("bash")}\n`);
+        expect(PROFILE_MARKER).toBe(`${MARKER} (wtp-profile 1)`);
         expect(await hasIntegration("bash", { home, env: {} })).toBe(true);
         expect(await removeIntegration("bash", { home, env: {} })).toBe(rc);
         expect(await readFile(rc, "utf8")).toBe("export A=1\n");
         expect(await hasIntegration("bash", { home, env: {} })).toBe(false);
         expect(await removeIntegration("bash", { home, env: {} })).toBeNull();
+    });
+
+    it("still knows the unnumbered marker that version 0.1.0 wrote", async () => {
+        const rc = path.join(home, ".bashrc");
+        await writeFile(rc, `export A=1\n\n${MARKER}\n${profileLine("bash")}\n`);
+        expect(await hasIntegration("bash", { home, env: {} })).toBe(true);
+        expect(await installIntegration("bash", deps(true))).toBe("already");
+        await removeIntegration("bash", { home, env: {} });
+        expect(await readFile(rc, "utf8")).toBe("export A=1\n");
     });
 
     it("also removes a phase 1 line that called wtp", async () => {

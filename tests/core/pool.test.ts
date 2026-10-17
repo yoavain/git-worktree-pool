@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { resolveContext } from "../../src/core/context.js";
 import { markerPath, samePath, slotPath } from "../../src/core/naming.js";
 import {
-    chooseSlot, loadPool, PROBLEM_MISSING, PROBLEM_ORPHAN_MARKER, PROBLEM_UNREGISTERED, repairPool
+    chooseSlot, loadPool, problemLabel, repairPool
 } from "../../src/core/pool.js";
 import { makeRepo, type Fixture } from "../helpers/repo.js";
 
@@ -53,9 +53,11 @@ describe("loadPool", () => {
         await mkdir(slotPath(fx.poolRoot, "my-repo", 4));
         const pool = await loadPool(await resolveContext(fx.root));
         const byIndex = new Map(pool.slots.map((s) => [s.index, s]));
-        expect(byIndex.get(2)).toMatchObject({ state: "broken", problem: PROBLEM_MISSING });
-        expect(byIndex.get(4)).toMatchObject({ state: "broken", problem: PROBLEM_UNREGISTERED });
-        expect(byIndex.get(5)).toMatchObject({ state: "broken", problem: PROBLEM_ORPHAN_MARKER });
+        expect(byIndex.get(2)).toMatchObject({ state: "broken", problem: "missing" });
+        expect(byIndex.get(4)).toMatchObject({ state: "broken", problem: "unregistered" });
+        expect(byIndex.get(5)).toMatchObject({ state: "broken", problem: "orphan-marker" });
+        expect(problemLabel("missing")).toBe("folder is missing");
+        expect(problemLabel(undefined)).toBe("unknown problem");
     });
 
     it("loads change counts on request", async () => {
@@ -122,6 +124,6 @@ describe("repairPool", () => {
         const fixed = await repairPool(ctx);
         expect(fixed).toHaveLength(2);
         const pool = await loadPool(ctx);
-        expect(pool.slots.map((s) => [s.index, s.problem])).toEqual([[0, undefined], [4, PROBLEM_UNREGISTERED]]);
+        expect(pool.slots.map((s) => [s.index, s.problem])).toEqual([[0, undefined], [4, "unregistered"]]);
     });
 });

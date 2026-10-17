@@ -55,4 +55,13 @@ describe("naming", () => {
     it.runIf(process.platform !== "win32")("respects case on POSIX", () => {
         expect(samePath("/work/My-Repo", "/work/my-repo")).toBe(false);
     });
+
+    it("takes the platform as a parameter", () => {
+        const a = path.join(base, "My-Repo");
+        const b = path.join(base, "my-repo");
+        expect(samePath(a, b, "win32")).toBe(true);
+        expect(samePath(a, b, "linux")).toBe(false);
+        // Only the case folding follows the parameter. On a Windows host, path.relative ignores case by itself.
+        expect(isInside(path.join(b, "src"), a, "win32")).toBe(true);
+    });
 });

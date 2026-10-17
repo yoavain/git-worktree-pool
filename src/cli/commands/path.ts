@@ -7,7 +7,7 @@ import type { Args } from "../main.js";
 
 export async function pathCommand(args: Args, io: Io): Promise<number> {
     const index = parseIndex(args.positionals[0], "wtp path <index>");
-    const pool = await loadPool(await resolveContext(io.cwd));
+    const pool = await loadPool(await resolveContext(io.cwd, io.platform));
     const slot = findSlot(pool, index);
     if (!slot || slot.state === "broken") throw new UserError(`There is no slot ${index}.`);
     io.stdout.write(slot.path + "\n");

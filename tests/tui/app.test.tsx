@@ -6,7 +6,7 @@ import { BranchInUseError } from "../../src/core/errors.js";
 import type { Pool, Slot } from "../../src/core/pool.js";
 import { App, type AppProps, type TuiActions } from "../../src/tui/App.js";
 
-const ctx: Context = { cwd: "/d/my-repo-wt-pool/my-repo-wt-1", root: "/d/my-repo", repoName: "my-repo", poolRoot: "/d/my-repo-wt-pool" };
+const ctx: Context = { cwd: "/d/my-repo-wt-pool/my-repo-wt-1", root: "/d/my-repo", repoName: "my-repo", poolRoot: "/d/my-repo-wt-pool", platform: "linux" };
 const zero = { added: 0, removed: 0, changed: 0, untracked: 0, ahead: 0, behind: 0 };
 const s = (p: Partial<Slot> & Pick<Slot, "index" | "state" | "path">): Slot =>
     ({ branch: null, head: "abcdef1", locked: false, isCurrent: false, changes: zero, ...p });
@@ -97,7 +97,7 @@ describe("App", () => {
         expect(t.lastFrame()).toContain("moves you to the root");
         await t.press("y");
         expect(t.actions.free).toHaveBeenCalledWith(1);
-        expect(t.lastFrame()).toContain("slot 1 is free");
+        expect(t.lastFrame()).toContain("Slot 1 is free.");
         await t.press("q");
         expect(t.onExit).toHaveBeenCalledWith({ cd: "/d/my-repo", copied: false });
     });
@@ -117,6 +117,7 @@ describe("App", () => {
         expect(t.lastFrame()).toContain("[x] also delete local branch");
         await t.press("y");
         expect(t.actions.remove).toHaveBeenCalledWith(2, { deleteBranch: true });
+        expect(t.lastFrame()).toContain("Slot 2 is deleted.");
     });
 
     it("refuses to delete the current slot on Windows", async () => {

@@ -36,6 +36,20 @@ describe("askYesNo", () => {
         expect(await answer).toBe(false);
     }, 2_000);
 
+    it("takes Enter as yes when yes is the default, and still treats Ctrl+C as no", async () => {
+        for (const [typed, expected] of [["", true], ["y", true], ["n", false], ["no", false]] as const) {
+            const s = streams();
+            const answer = askYesNo("Write?", s, { defaultYes: true });
+            s.input.write(`${typed}\r`);
+            expect(await answer).toBe(expected);
+        }
+        const s = streams();
+        const answer = askYesNo("Write?", s, { defaultYes: true });
+        s.input.write("\x03");
+        expect(await answer).toBe(false);
+        expect(s.written()).toContain("Write? [Y/n] ");
+    }, 2_000);
+
     it("shows the question with the default", async () => {
         const s = streams();
         const answer = askYesNo("Free?", s);

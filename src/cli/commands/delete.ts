@@ -4,29 +4,27 @@ import { deleteSlot } from "../../core/delete.js";
 import { UserError } from "../../core/errors.js";
 import { describeLoss, inspectSlot } from "../../core/free.js";
 import { isInside } from "../../core/naming.js";
-import { findSlot, loadPool } from "../../core/pool.js";
+import { loadPool, requireSlot } from "../../core/pool.js";
+import { deletedText } from "../../ui/labels.js";
 import { parseIndex } from "../args.js";
 import type { Io } from "../io.js";
 import type { Args } from "../main.js";
-import { moveShellTo } from "../move.js";
-import { renderPlainTable } from "./list.js";
+import { showPoolAfter } from "../move.js";
 
 export async function deleteCommand(args: Args, io: Io): Promise<number> {
     const index = parseIndex(args.positionals[0], "wtp delete <index>");
-    if (index === 0) throw new UserError("Slot 0 is the clone. wtp never deletes it.");
-    const ctx = await resolveContext(io.cwd);
-    const slot = findSlot(await loadPool(ctx), index);
-    if (!slot) throw new UserError(`There is no slot ${index}.`);
+    const ctx = await resolveContext(io.cwd, io.platform);
+    const slot = requireSlot(await loadPool(ctx), index, "delete");
 
-    const inside = isInside(ctx.cwd, slot.path);
+    const inside = isInside(ctx.cwd, slot.path, ctx.platform);
     if (inside && io.platform === "win32") {
         throw new UserError(`You are in slot ${index}. Windows can't delete a folder that a shell is in. Run wtp switch 0 first, then wtp delete ${index}.`);
     }
 
     const force = Boolean(args.values.force);
-    let discard = force;
+    // --yes answers the question below, and that question is "discard and delete?", as in free --yes.
     if (!args.values.yes) {
-        io.stderr.write(`Delete slot ${index} (${path.basename(slot.path)} · ${slot.branch ?? slot.state})?\n`);
+        io.stderr.write(`Delete slot ${index} (${path.basename(slot.path)}, ${slot.branch ?? slot.state})?\n`);
         if (slot.state === "active") {
             const info = await inspectSlot(slot.path);
             // With --branch --force the branch goes too (git branch -D), so "the branch keeps them" would be false.
@@ -46,17 +44,15 @@ export async function deleteCommand(args: Args, io: Io): Promise<number> {
             io.stderr.write("Aborted. Nothing changed.\n");
             return 1;
         }
-        discard = true;
     }
 
     const r = await deleteSlot(ctx, index, {
-        discard,
+        discard: true,
         unlock: force,
         deleteBranch: args.values.branch ? (force ? "force" : "safe") : false
     });
     for (const w of r.warnings) io.stderr.write(`! ${w}\n`);
-    io.stderr.write(`slot ${index} deleted${r.branchDeleted ? `, branch ${r.branch} deleted` : ""}\n`);
-    if (inside) await moveShellTo(ctx.root, io, { copy: false, cd: true });
-    io.stdout.write(renderPlainTable(await loadPool({ ...ctx, cwd: inside ? ctx.root : ctx.cwd }, { changes: true }), io));
+    io.stderr.write(`${deletedText(index, r.branchDeleted ? r.branch : null)}\n`);
+    await showPoolAfter(ctx, slot.path, io);
     return 0;
 }

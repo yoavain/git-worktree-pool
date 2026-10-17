@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { samePath } from "../../src/core/naming.js";
-import { findGitBash } from "../../src/platform/git-bash.js";
+import { findGitBash } from "../helpers/git-bash.js";
 
 const run = promisify(execFile);
 const win = process.platform === "win32";

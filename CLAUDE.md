@@ -28,6 +28,7 @@ npm CLI + Ink TUI (`wtp`) that hands out reusable git worktrees next to a clone 
 * `src/bin/wtp.ts` keeps its `#!/usr/bin/env node` shebang. Without it, npm's shim opens `dist/bin/wtp.js` in an editor. `tests/bin.test.ts` guards it.
 * In `wtp.cmd`: `chcp` and `set /p` stay outside `( )` blocks, and batch files need `call`.
 * Windows PowerShell 5.1 without a console writes stdout in the OEM code page. Tests read non-ASCII paths from a UTF-8 file, not stdout.
+* Plain CLI output is ASCII: `src/ui/glyphs.ts` `PLAIN_GLYPHS` is the default. Only the Ink TUI passes `TUI_GLYPHS`.
 * The Bash tool mangles backslash paths passed to cmd/powershell. Drive real-console checks with a `.ps1` file or `-EncodedCommand`.
 
 ## Dependencies

@@ -23,7 +23,7 @@ describe("wtp list / path", () => {
             expect(await main([cmd], t.io)).toBe(0);
             expect(t.out()).toContain("BRANCH");
             expect(t.out()).toContain("feat/a");
-            expect(t.out()).toContain("next assign → slot 2 (new)");
+            expect(t.out()).toContain("next assign -> slot 2 (new)");
         }
     });
 

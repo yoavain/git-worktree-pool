@@ -10,7 +10,8 @@ import { canRunTui, tuiCommand } from "./tui.js";
 export async function switchCommand(args: Args, io: Io): Promise<number> {
     if (args.positionals[0] === undefined && canRunTui(io)) return tuiCommand(io, "list");
     const index = parseIndex(args.positionals[0], "wtp switch <index>");
-    const pool = await loadPool(await resolveContext(io.cwd));
+    if (args.values["no-cd"]) throw new UserError(`switch always changes the folder. To print the path only, run: wtp path ${index}`);
+    const pool = await loadPool(await resolveContext(io.cwd, io.platform));
     const slot = findSlot(pool, index);
     if (!slot || slot.state === "broken") {
         const valid = pool.slots.filter((s) => s.state !== "broken").map((s) => s.index).join(", ");

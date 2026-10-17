@@ -10,6 +10,8 @@ export interface FakeIo {
   err(): string;
   copies: string[];
   questions: string[];
+  // The defaultYes of each question, in order.
+  defaults: boolean[];
   cwdTarget(): Promise<string>;
 }
 
@@ -21,6 +23,7 @@ export function makeIo(cwd: string, opts: {
     let err = "";
     const copies: string[] = [];
     const questions: string[] = [];
+    const defaults: boolean[] = [];
     const cwdFile = path.join(mkdtempSync(path.join(os.tmpdir(), "wtp-io-")), "cwd");
     const env: NodeJS.ProcessEnv = { ...(opts.env ?? {}) };
     if (opts.integration ?? true) env.WTP_CWD_FILE = cwdFile;
@@ -38,8 +41,9 @@ export function makeIo(cwd: string, opts: {
             return true;
         } },
         stdinIsTTY: opts.tty ?? false,
-        async confirm(question) {
+        async confirm(question, ask) {
             questions.push(question);
+            defaults.push(Boolean(ask?.defaultYes));
             return opts.answer ?? false;
         },
         async copy(text) {
@@ -48,7 +52,7 @@ export function makeIo(cwd: string, opts: {
         }
     };
     return {
-        io, copies, questions,
+        io, copies, questions, defaults,
         out: () => out,
         err: () => err,
         cwdTarget: async () => readFile(cwdFile, "utf8").catch(() => "")

@@ -2,11 +2,12 @@ import { Box, Text, useApp, useInput, useStdout } from "ink";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { AssignResult } from "../core/assign.js";
 import type { BranchChoice } from "../core/branch.js";
-import { planLabel } from "../cli/move.js";
 import { BranchInUseError } from "../core/errors.js";
 import { describeLoss, type SlotInspection } from "../core/free.js";
-import type { Pool } from "../core/pool.js";
+import { chooseSlot, cloneRefusal, type Pool, type SlotAction } from "../core/pool.js";
 import type { CopyResult } from "../platform/clipboard.js";
+import { TUI_GLYPHS } from "../ui/glyphs.js";
+import { assignSummary, deletedText, freedText, slotTarget } from "../ui/labels.js";
 import { buildRows, nextAssignHint, type Row } from "../ui/table.js";
 import { AssignPopup } from "./AssignPopup.js";
 import { Footer, KEYS_LIST, type Message } from "./Footer.js";
@@ -76,7 +77,7 @@ export function App({ initialPool, actions, initialMode = "list", platform, onEx
     const [message, setMessage] = useState<Message | null>(null);
     const [branches, setBranches] = useState<BranchChoice[]>([]);
     const [exitCd, setExitCd] = useState<string | null>(null);
-    const rows = useMemo(() => visibleRows(buildRows(pool, { loading: "…" }), filter), [pool, filter]);
+    const rows = useMemo(() => visibleRows(buildRows(pool, { loading: "…", glyphs: TUI_GLYPHS }), filter), [pool, filter]);
     const [selected, setSelected] = useState(() => initialSelection(rows));
     const digits = useRef(createDigitBuffer());
     const row: Row | undefined = rows[selected];
@@ -138,9 +139,9 @@ export function App({ initialPool, actions, initialMode = "list", platform, onEx
         finish(r.path, true);
     }
 
-    function refusal(r: Row, verb: "free" | "delete"): string | null {
+    function refusal(r: Row, verb: SlotAction): string | null {
         if (r.slotIndex === null) return `wtp only ${verb}s pool slots. This worktree is outside the pool.`;
-        if (r.slotIndex === 0) return verb === "free" ? "Slot 0 is the clone. It cannot be freed." : "Slot 0 is the clone. wtp never deletes it.";
+        if (r.slotIndex === 0) return cloneRefusal(verb);
         if (r.tone === "broken") return `Slot ${r.index} is broken. Run wtp doctor.`;
         return null;
     }
@@ -184,14 +185,14 @@ export function App({ initialPool, actions, initialMode = "list", platform, onEx
             finish(r.path, true, [
                 ...(r.createdPoolRoot ? [`created the pool folder ${pool.ctx.poolRoot}`] : []),
                 ...r.warnings.map((w) => `! ${w}`),
-                `branch ${name} (${planLabel(r.plan)}) → slot ${r.index} (${r.reused ? "free, reused" : "new"})`
+                assignSummary(name, r, TUI_GLYPHS)
             ]);
         }
         catch (e) {
             if (e instanceof BranchInUseError && e.index !== null) {
                 setMode({ kind: "list" });
                 setFilter("");
-                const all = buildRows(pool, { loading: "…" });
+                const all = buildRows(pool, { loading: "…", glyphs: TUI_GLYPHS });
                 const i = all.findIndex((x) => x.slotIndex === e.index);
                 if (i >= 0) setSelected(i);
                 setMessage({ tone: "info", text: `${name} is already in slot ${e.index}. Press Enter to go there.` });
@@ -252,7 +253,7 @@ export function App({ initialPool, actions, initialMode = "list", platform, onEx
                 void run(`Freeing slot ${r.index}…`, async () => {
                     await actions.free(r.slotIndex!);
                     if (r.isCurrent) setExitCd(pool.ctx.root);
-                    return `slot ${r.index} is free`;
+                    return freedText(r.slotIndex!);
                 });
             }
             else if (input === "n" || key.escape) setMode({ kind: "list" });
@@ -266,7 +267,7 @@ export function App({ initialPool, actions, initialMode = "list", platform, onEx
                 void run(`Deleting slot ${r.index}…`, async () => {
                     const warnings = await actions.remove(r.slotIndex!, { deleteBranch });
                     if (r.isCurrent) setExitCd(pool.ctx.root);
-                    return [`slot ${r.index} deleted`, ...warnings].join(" · ");
+                    return [deletedText(r.slotIndex!, null), ...warnings].join(" ");
                 });
             }
             else if (input === "n" || key.escape) setMode({ kind: "list" });
@@ -305,7 +306,7 @@ export function App({ initialPool, actions, initialMode = "list", platform, onEx
         else if (input === "?") setMode({ kind: "help" });
     });
 
-    const next = nextAssignHint(pool);
+    const next = nextAssignHint(pool, TUI_GLYPHS);
     const suggestions = mode.kind === "assign" ? suggestBranches(mode.query, branches) : [];
 
     return (
@@ -317,7 +318,7 @@ export function App({ initialPool, actions, initialMode = "list", platform, onEx
             {filter || mode.kind === "filter" ? <Text color="cyan">/{filter}{mode.kind === "filter" ? "▌" : ""}</Text> : null}
             <Text dimColor>{next}</Text>
             {mode.kind === "assign" ? (
-                <AssignPopup query={mode.query} suggestions={suggestions} selected={mode.selected} target={next.replace("next assign → ", "")} />
+                <AssignPopup query={mode.query} suggestions={suggestions} selected={mode.selected} target={slotTarget(chooseSlot(pool))} />
             ) : null}
             {mode.kind === "confirmCdFree" ? (
                 <Popup title={`Slot ${mode.row.index} is free`} tone="info" lines={["It has no branch. Go there anyway?"]} keys="y go there    n cancel" />

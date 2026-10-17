@@ -1,6 +1,6 @@
 import type { Context } from "./context.js";
 import { tryGit } from "./git.js";
-import { loadPool, PROBLEM_MISSING, PROBLEM_ORPHAN_MARKER } from "./pool.js";
+import { loadPool, problemLabel } from "./pool.js";
 
 export const MIN_GIT: [number, number, number] = [2, 31, 0];
 
@@ -34,8 +34,8 @@ export async function diagnose(ctx: Context): Promise<Diagnosis> {
             .map((s) => ({
                 index: s.index,
                 path: s.path,
-                problem: s.problem ?? "unknown problem",
-                autoFix: s.problem === PROBLEM_MISSING || s.problem === PROBLEM_ORPHAN_MARKER
+                problem: problemLabel(s.problem),
+                autoFix: s.problem === "missing" || s.problem === "orphan-marker"
             }))
     };
 }

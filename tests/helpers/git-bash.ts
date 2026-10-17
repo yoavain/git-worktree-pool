@@ -1,6 +1,7 @@
+// Test helper: finds the Git Bash that ships with Git for Windows, for the shell tests.
 import { existsSync } from "node:fs";
 import path from "node:path";
-import { tryGit } from "../core/git.js";
+import { tryGit } from "../../src/core/git.js";
 
 export function gitBashFromExecPath(execPath: string): string[] {
     const gitRoot = path.win32.resolve(execPath, "..", "..", "..");

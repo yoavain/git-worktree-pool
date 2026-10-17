@@ -24,7 +24,8 @@ describe("TUI wiring", () => {
         expect(await main([], t.io)).toBe(0);
         expect(runTui).toHaveBeenCalledWith(expect.objectContaining({ repoName: "my-repo" }), t.io, { mode: "list" });
         expect(await t.cwdTarget()).toBe("/somewhere");
-        expect(t.err()).toContain("✓ copied /somewhere");
+        expect(t.err()).toContain("copied /somewhere");
+        expect(t.err()).not.toContain("✓");
     });
 
     it("opens assign mode for wtp assign with no branch in a terminal", async () => {

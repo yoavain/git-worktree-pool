@@ -1,7 +1,8 @@
 import { spawn } from "node:child_process";
 
 export type CopyResult = "native" | "osc52" | "failed";
-export type Runner = (cmd: string, args: string[], input: Buffer) => Promise<boolean>;
+// Feeds input to a command's stdin and reports whether it exited 0.
+export type InputRunner = (cmd: string, args: string[], input: Buffer) => Promise<boolean>;
 
 interface Candidate {
   cmd: string;
@@ -13,7 +14,7 @@ const utf8 = (text: string) => Buffer.from(text, "utf8");
 // clip.exe detects UTF-16LE without a BOM, and keeps a BOM as a U+FEFF char in the clipboard.
 const utf16 = (text: string) => Buffer.from(text, "utf16le");
 
-export const runWithInput: Runner = (cmd, args, input) =>
+export const runWithInput: InputRunner = (cmd, args, input) =>
     new Promise((resolve) => {
         const child = spawn(cmd, args, { stdio: ["pipe", "ignore", "ignore"], windowsHide: true });
         child.on("error", () => resolve(false));
@@ -38,7 +39,7 @@ export function osc52(text: string): string {
 
 export async function copyToClipboard(
     text: string,
-    deps: { platform: NodeJS.Platform; env: NodeJS.ProcessEnv; run?: Runner; writeTty?: (s: string) => void }
+    deps: { platform: NodeJS.Platform; env: NodeJS.ProcessEnv; run?: InputRunner; writeTty?: (s: string) => void }
 ): Promise<CopyResult> {
     const run = deps.run ?? runWithInput;
     for (const c of clipboardCandidates(deps.platform, deps.env)) {

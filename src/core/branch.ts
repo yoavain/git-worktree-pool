@@ -41,11 +41,13 @@ export async function resolveBranch(ctx: Context, name: string, cfg: WtpConfig):
             ctx.root,
             { timeoutMs: FETCH_TIMEOUT_MS }
         );
-        if (!fetched.ok && !/couldn't find remote ref/i.test(fetched.stderr)) {
+        // The remote answered that it has no such branch, so a local refs/remotes/... copy is stale.
+        const goneOnRemote = !fetched.ok && /couldn't find remote ref/i.test(fetched.stderr);
+        if (!fetched.ok && !goneOnRemote) {
             const reason = fetched.stderr.trim().split("\n")[0] ?? "unknown error";
             warning = `Could not fetch from ${cfg.remote} (${reason}). wtp used the local refs.`;
         }
-        if (await refExists(`refs/remotes/${cfg.remote}/${name}`, ctx.root)) {
+        if (!goneOnRemote && (await refExists(`refs/remotes/${cfg.remote}/${name}`, ctx.root))) {
             return { plan: { kind: "remote", name, remote: cfg.remote }, warning };
         }
     }

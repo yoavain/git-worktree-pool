@@ -1,23 +1,14 @@
-import { execFile } from "node:child_process";
-import type { Runner } from "./process-tree.js";
+import { runForOutput, type OutputRunner } from "./run.js";
 
 export const PS51_NOTE =
   "PowerShell 5.1 blocks scripts, so wtp does not run there. To allow it: Set-ExecutionPolicy -Scope CurrentUser RemoteSigned\n";
 
-const runCommand = (env?: NodeJS.ProcessEnv): Runner => (cmd, args) =>
-    new Promise((resolve, reject) => {
-        execFile(cmd, args, { windowsHide: true, encoding: "utf8", env }, (err, stdout) => {
-            if (err) reject(err);
-            else resolve(stdout);
-        });
-    });
-
 // A parent started with -ExecutionPolicy passes it on through PSExecutionPolicyPreference. Drop it.
-export async function readPs51Policy(run?: Runner): Promise<string | null> {
+export async function readPs51Policy(run?: OutputRunner): Promise<string | null> {
     const env = { ...process.env };
     delete env.PSExecutionPolicyPreference;
     try {
-        const out = await (run ?? runCommand(env))("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", "Get-ExecutionPolicy"]);
+        const out = await (run ?? runForOutput({ env }))("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", "Get-ExecutionPolicy"]);
         return out.trim() || null;
     }
     catch {
@@ -35,9 +26,9 @@ export function adminCopyArgs(files: string[], dir: string): string[] {
     return ["-NoProfile", "-NonInteractive", "-Command", command];
 }
 
-export async function adminCopy(files: string[], dir: string, run?: Runner): Promise<boolean> {
+export async function adminCopy(files: string[], dir: string, run?: OutputRunner): Promise<boolean> {
     try {
-        await (run ?? runCommand())("powershell.exe", adminCopyArgs(files, dir));
+        await (run ?? runForOutput())("powershell.exe", adminCopyArgs(files, dir));
         return true;
     }
     catch {

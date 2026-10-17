@@ -53,6 +53,7 @@ describe("setup", () => {
         expect(await setupCommand(args({ yes: true }), t.io, deps())).toBe(0);
         for (const n of names) expect(existsSync(path.join(bin, n))).toBe(true);
         expect(t.err()).toContain(`wtp runs ${path.join(bin, win ? "wtp.cmd" : "wtp")}`);
+        expect(t.err()).not.toContain("✓");
     });
 
     it("adds the bash function off Windows", async () => {
@@ -80,6 +81,16 @@ describe("setup", () => {
         expect(await setupCommand(args({}), t.io, deps())).toBe(1);
         expect(t.questions.length).toBeGreaterThan(0);
         for (const n of names) expect(existsSync(path.join(bin, n))).toBe(false);
+    });
+
+    it("takes Enter as yes for its write prompts, but not for --remove", async () => {
+        const t = io();
+        expect(await setupCommand(args({}), t.io, deps())).toBe(0);
+        expect(t.defaults.length).toBeGreaterThan(0);
+        expect(t.defaults.every(Boolean)).toBe(true);
+        const r = io();
+        expect(await setupCommand(args({ remove: true }), r.io, deps())).toBe(0);
+        expect(r.defaults).toEqual([false]);
     });
 
     it("stops when another wtp comes first", async () => {

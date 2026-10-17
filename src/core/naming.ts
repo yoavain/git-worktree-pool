@@ -40,16 +40,17 @@ export function normalizePath(p: string): string {
     return path.resolve(p);
 }
 
-function key(p: string): string {
+// Windows file names ignore case. Core passes ctx.platform; the default is the machine wtp runs on.
+function key(p: string, platform: NodeJS.Platform): string {
     const resolved = path.resolve(p);
-    return process.platform === "win32" ? resolved.toLowerCase() : resolved;
+    return platform === "win32" ? resolved.toLowerCase() : resolved;
 }
 
-export function samePath(a: string, b: string): boolean {
-    return key(a) === key(b);
+export function samePath(a: string, b: string, platform: NodeJS.Platform = process.platform): boolean {
+    return key(a, platform) === key(b, platform);
 }
 
-export function isInside(child: string, parent: string): boolean {
-    const rel = path.relative(key(parent), key(child));
+export function isInside(child: string, parent: string, platform: NodeJS.Platform = process.platform): boolean {
+    const rel = path.relative(key(parent, platform), key(child, platform));
     return rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel));
 }

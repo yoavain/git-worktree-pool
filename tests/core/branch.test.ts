@@ -30,6 +30,15 @@ describe("resolveBranch", () => {
         expect((await resolve("feat/remote")).plan).toEqual({ kind: "remote", name: "feat/remote", remote: "origin" });
     });
 
+    it("ignores a stale remote-tracking ref after the remote branch is deleted", async () => {
+        await fx.pushRemoteOnlyBranch("feat/gone");
+        await fx.git(fx.root, "fetch", "origin");
+        await fx.git(fx.origin, "branch", "-D", "feat/gone");
+        const r = await resolve("feat/gone");
+        expect(r.plan).toEqual({ kind: "new", name: "feat/gone", base: "main" });
+        expect(r.warning).toBeUndefined();
+    });
+
     it("plans a new branch from local main", async () => {
         const r = await resolve("feat/new");
         expect(r.plan).toEqual({ kind: "new", name: "feat/new", base: "main" });

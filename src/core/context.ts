@@ -8,6 +8,8 @@ export interface Context {
   root: string;
   repoName: string;
   poolRoot: string;
+  // Decides whether paths compare without case (win32), and whether delete probes for file locks.
+  platform: NodeJS.Platform;
 }
 
 async function commonDirOf(dir: string): Promise<string | null> {
@@ -22,15 +24,15 @@ function rootFromCommonDir(commonDir: string): string {
     return path.dirname(commonDir);
 }
 
-function makeContext(cwd: string, root: string): Context {
-    return { cwd, root, repoName: path.basename(root), poolRoot: poolRootFor(root) };
+function makeContext(cwd: string, root: string, platform: NodeJS.Platform): Context {
+    return { cwd, root, repoName: path.basename(root), poolRoot: poolRootFor(root), platform };
 }
 
-export async function resolveContext(cwd: string): Promise<Context> {
+export async function resolveContext(cwd: string, platform: NodeJS.Platform = process.platform): Promise<Context> {
     const start = normalizePath(cwd);
 
     const commonDir = await commonDirOf(start);
-    if (commonDir) return makeContext(start, rootFromCommonDir(commonDir));
+    if (commonDir) return makeContext(start, rootFromCommonDir(commonDir), platform);
 
     for (let dir = start; ; dir = path.dirname(dir)) {
         const base = path.basename(dir);
@@ -38,7 +40,7 @@ export async function resolveContext(cwd: string): Promise<Context> {
             const root = path.join(path.dirname(dir), base.slice(0, -POOL_SUFFIX.length));
             const rootCommon = await commonDirOf(root);
             // Use git's answer, not the typed folder name: it has the real letter case on Windows.
-            if (rootCommon && samePath(rootFromCommonDir(rootCommon), root)) return makeContext(start, rootFromCommonDir(rootCommon));
+            if (rootCommon && samePath(rootFromCommonDir(rootCommon), root, platform)) return makeContext(start, rootFromCommonDir(rootCommon), platform);
             throw new ContextError(`Found the pool ${dir}, but ${root} is not a git clone.`);
         }
         if (path.dirname(dir) === dir) break;

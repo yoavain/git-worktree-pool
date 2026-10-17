@@ -1,8 +1,8 @@
-import { closeSync, existsSync, openSync, readSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { closeSync, existsSync, openSync, readSync, rmSync, writeFileSync } from "node:fs";
 import { chmod, copyFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { findAllOnPath, findOnPath, pathDirs, sameDir, type SearchDeps } from "./path-search.js";
+import { findAllOnPath, findOnPath, isFile, pathApi, pathDirs, pushUniquePath, sameDir, type SearchDeps } from "./path-search.js";
 import type { ProcInfo } from "./process-tree.js";
 
 export const LAUNCHER_VERSION = 1;
@@ -33,14 +33,7 @@ export interface FsDeps {
 }
 
 export const realFs: FsDeps = {
-    isFile(p) {
-        try {
-            return statSync(p).isFile();
-        }
-        catch {
-            return false;
-        }
-    },
+    isFile,
     // fs.access(W_OK) only checks the read-only attribute on Windows, not the folder's ACL. Write a probe file instead.
     isWritableDir(dir) {
         const probe = path.join(dir, `.wtp-write-probe-${process.pid}`);
@@ -76,10 +69,6 @@ export type FolderChoice =
   | { kind: "none"; dir: string | null };
 
 type FolderDeps = SearchDeps & { parents: ProcInfo[]; fs: FsDeps };
-
-function pathApi(platform: NodeJS.Platform): path.PlatformPath {
-    return platform === "win32" ? path.win32 : path.posix;
-}
 
 // The folder of the worktree-pool that the user's shell runs. A proxy .exe in node's parent chain
 // (nvm shim mode, Volta, scoop) is that folder. Without a proxy, node's PATH is the shell's PATH.
@@ -119,9 +108,18 @@ export interface Scan {
   conflicts: Conflict[];
 }
 
-function isMarked(file: string, fs: FsDeps): boolean {
+// The format number in a launcher file, or null when the file is missing or is not a wtp launcher.
+export function launcherVersion(file: string, fs: FsDeps): number | null {
     const head = fs.readHead(file);
-    return head !== null && markerVersion(head) !== null;
+    return head === null ? null : markerVersion(head);
+}
+
+export function isMarked(file: string, fs: FsDeps): boolean {
+    return launcherVersion(file, fs) !== null;
+}
+
+export function isCurrentLauncher(file: string, fs: FsDeps): boolean {
+    return (launcherVersion(file, fs) ?? -1) >= LAUNCHER_VERSION;
 }
 
 function wtpFiles(deps: SearchDeps & { fs: FsDeps }): string[] {
@@ -137,7 +135,7 @@ export function scanWtp(target: string, deps: SearchDeps & { fs: FsDeps }): Scan
     const files = wtpFiles(deps);
     for (const name of LAUNCHER_FILES) {
         const file = p.join(target, name);
-        if (deps.fs.isFile(file) && !files.some((f) => f.toLowerCase() === file.toLowerCase())) files.push(file);
+        if (deps.fs.isFile(file)) pushUniquePath(files, file);
     }
     const scan: Scan = { ours: [], stale: [], conflicts: [] };
     for (const file of files) {
@@ -181,9 +179,7 @@ export function listMarkedLaunchers(deps: SearchDeps & { fs: FsDeps }): string[]
     for (const dir of dirs) {
         for (const name of LAUNCHER_FILES) {
             const file = p.join(dir, name);
-            if (deps.fs.isFile(file) && isMarked(file, deps.fs) && !found.some((f) => f.toLowerCase() === file.toLowerCase())) {
-                found.push(file);
-            }
+            if (deps.fs.isFile(file) && isMarked(file, deps.fs)) pushUniquePath(found, file);
         }
     }
     return found;

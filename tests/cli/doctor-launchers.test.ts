@@ -1,7 +1,11 @@
+import { mkdtempSync, writeFileSync } from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { doctorCommand, type DoctorDeps } from "../../src/cli/commands/doctor.js";
 import type { Args } from "../../src/cli/main.js";
 import type { FsDeps } from "../../src/platform/launchers.js";
+import { MARKER, profileLine } from "../../src/platform/shell-init.js";
 import { makeIo } from "../helpers/io.js";
 import { makeRepo, type Fixture } from "../helpers/repo.js";
 
@@ -51,9 +55,45 @@ describe("doctor launcher checks (Windows)", () => {
         expect(t.err()).toContain("Set-ExecutionPolicy");
     });
 
-    it("is quiet when everything is fine", async () => {
+    it("names the launcher that wins, and warns about nothing when everything is fine", async () => {
         const t = io();
         await doctorCommand(args, t.io, deps({ "C:\\bin\\wtp.cmd": "rem wtp-launcher 1" }));
+        expect(t.out()).toContain("wtp -> C:\\bin\\wtp.cmd");
         expect(t.err()).toBe("");
+    });
+});
+
+describe("doctor wtp check (POSIX)", () => {
+    let fx: Fixture;
+    let home: string;
+    beforeEach(async () => {
+        fx = await makeRepo();
+        home = mkdtempSync(path.join(os.tmpdir(), "wtp-home-"));
+    });
+    afterEach(async () => {
+        await fx.cleanup();
+    });
+
+    const io = () => makeIo(fx.root, { platform: "linux", home, env: { PATH: "/usr/bin", SHELL: "/bin/bash" } });
+
+    it("names the profile function", async () => {
+        writeFileSync(path.join(home, ".bashrc"), `${MARKER}\n${profileLine("bash")}\n`);
+        const t = io();
+        expect(await doctorCommand(args, t.io, deps({ "/usr/bin/wtp": "# wtp-launcher 1" }))).toBe(0);
+        expect(t.out()).toContain(`wtp -> the wtp function in ${path.join(home, ".bashrc")}`);
+        expect(t.err()).toBe("");
+    });
+
+    it("names the sh launcher, and says it can't change the folder", async () => {
+        const t = io();
+        expect(await doctorCommand(args, t.io, deps({ "/usr/bin/wtp": "# wtp-launcher 1" }))).toBe(0);
+        expect(t.out()).toContain("wtp -> /usr/bin/wtp");
+        expect(t.err()).toContain("worktree-pool setup");
+    });
+
+    it("warns when wtp is not set up", async () => {
+        const t = io();
+        expect(await doctorCommand(args, t.io, deps({}))).toBe(0);
+        expect(t.err()).toContain("wtp is not set up");
     });
 });

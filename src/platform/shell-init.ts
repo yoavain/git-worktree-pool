@@ -6,6 +6,9 @@ import { UserError } from "../core/errors.js";
 export type Shell = "bash" | "zsh" | "fish";
 export const SHELLS: Shell[] = ["bash", "zsh", "fish"];
 export const MARKER = "# wtp shell integration";
+// The profile block's format number, like LAUNCHER_VERSION. 0.1.0 wrote MARKER alone; MARKER still finds both.
+export const PROFILE_VERSION = 1;
+export const PROFILE_MARKER = `${MARKER} (wtp-profile ${PROFILE_VERSION})`;
 export const POWERSHELL_NO_PROFILE = "PowerShell needs no profile line. Run \"worktree-pool setup\" once.";
 
 const POSIX = `${MARKER}
@@ -78,11 +81,11 @@ export async function installIntegration(
     const current = existsSync(file) ? await readFile(file, "utf8") : "";
     if (current.includes(MARKER)) return "already";
     const line = profileLine(shell);
-    deps.log(`wtp adds these lines to ${file}:\n\n  ${MARKER}\n  ${line}\n\n`);
+    deps.log(`wtp adds these lines to ${file}:\n\n  ${PROFILE_MARKER}\n  ${line}\n\n`);
     if (!(await deps.confirm("Add them?"))) return "declined";
     await mkdir(path.dirname(file), { recursive: true });
     const sep = current === "" || current.endsWith("\n") ? "" : "\n";
-    await appendFile(file, `${sep}${current === "" ? "" : "\n"}${MARKER}\n${line}\n`);
+    await appendFile(file, `${sep}${current === "" ? "" : "\n"}${PROFILE_MARKER}\n${line}\n`);
     return "installed";
 }
 
@@ -96,7 +99,7 @@ export async function removeIntegration(shell: Shell, deps: ProfileDeps): Promis
     const file = profilePath(shell, deps);
     if (!existsSync(file)) return null;
     const lines = (await readFile(file, "utf8")).split("\n");
-    const i = lines.findIndex((l) => l.trimEnd() === MARKER);
+    const i = lines.findIndex((l) => l.trimEnd().startsWith(MARKER));
     if (i === -1) return null;
     let start = i;
     const end = /\binit (bash|zsh|fish)\b/.test(lines[i + 1] ?? "") ? i + 2 : i + 1;
@@ -106,6 +109,12 @@ export async function removeIntegration(shell: Shell, deps: ProfileDeps): Promis
     if (shell === "fish" && rest.trim() === "") await rm(file, { force: true });
     else await writeFile(file, rest);
     return file;
+}
+
+// The shell whose profile function would serve this session: Git Bash on Windows, else $SHELL.
+export function sessionShell(platform: NodeJS.Platform, env: NodeJS.ProcessEnv, home: string): Shell | null {
+    if (platform === "win32") return env.MSYSTEM ? "bash" : null;
+    return shellForSetup(platform, env, home);
 }
 
 // The shell whose profile setup adds the function to. On Windows only Git Bash needs it.

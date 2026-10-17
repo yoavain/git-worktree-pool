@@ -5,7 +5,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { samePath } from "../../src/core/naming.js";
-import { findGitBash } from "../../src/platform/git-bash.js";
+import { findGitBash } from "../helpers/git-bash.js";
 import { initScript } from "../../src/platform/shell-init.js";
 
 const run = promisify(execFile);

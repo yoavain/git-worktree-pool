@@ -24,7 +24,7 @@ export function poolToJson(pool: Pool): object {
 }
 
 export async function listCommand(args: Args, io: Io): Promise<number> {
-    const ctx = await resolveContext(io.cwd);
+    const ctx = await resolveContext(io.cwd, io.platform);
     const pool = await loadPool(ctx, { changes: !args.values["no-changes"] });
     io.stdout.write(args.values.json ? JSON.stringify(poolToJson(pool), null, 2) + "\n" : renderPlainTable(pool, io));
     return 0;

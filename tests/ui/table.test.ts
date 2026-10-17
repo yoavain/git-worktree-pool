@@ -5,13 +5,15 @@ import type { Pool, Slot } from "../../src/core/pool.js";
 import {
     buildRows, formatChanges, formatTable, layoutColumns, nextAssignHint, truncateMiddle
 } from "../../src/ui/table.js";
+import { TUI_GLYPHS } from "../../src/ui/glyphs.js";
 
 const parent = path.resolve("/dev");
 const ctx: Context = {
     cwd: path.join(parent, "my-repo"),
     root: path.join(parent, "my-repo"),
     repoName: "my-repo",
-    poolRoot: path.join(parent, "my-repo-wt-pool")
+    poolRoot: path.join(parent, "my-repo-wt-pool"),
+    platform: process.platform
 };
 
 function slot(p: Partial<Slot> & Pick<Slot, "index" | "state">): Slot {
@@ -31,7 +33,9 @@ const pool: Pool = {
 
 describe("formatChanges", () => {
     it("formats counts", () => {
-        expect(formatChanges({ added: 42, removed: 7, changed: 3, untracked: 2, ahead: 1, behind: 3 })).toBe("+42 -7 ?2 ↑1 ↓3");
+        const c = { added: 42, removed: 7, changed: 3, untracked: 2, ahead: 1, behind: 3 };
+        expect(formatChanges(c)).toBe("+42 -7 ?2 ahead 1 behind 3");
+        expect(formatChanges(c, "", TUI_GLYPHS)).toBe("+42 -7 ?2 ↑1 ↓3");
     });
     it("shows clean, loading, and unknown", () => {
         expect(formatChanges({ added: 0, removed: 0, changed: 0, untracked: 0, ahead: 0, behind: 0 })).toBe("clean");
@@ -48,12 +52,19 @@ describe("buildRows", () => {
         const rows = buildRows(pool);
         expect(rows.map((r) => [r.index, r.branch, r.folder, r.state])).toEqual([
             ["0", "main", "my-repo", "root"],
-            ["1", "feature/login-form", path.join("my-repo-wt-pool", "my-repo-wt-1"), "active ● here"],
-            ["3", "—", path.join("my-repo-wt-pool", "my-repo-wt-3"), "free"],
+            ["1", "feature/login-form", path.join("my-repo-wt-pool", "my-repo-wt-1"), "active * here"],
+            ["3", "-", path.join("my-repo-wt-pool", "my-repo-wt-3"), "free"],
             ["-", "side", "elsewhere", "other"]
         ]);
+        expect(rows[1]?.changes).toBe("+42 -7 ?2 ahead 1");
+        expect(rows[2]?.changes).toBe("-");
+    });
+
+    it("uses the TUI glyphs when asked", () => {
+        const rows = buildRows(pool, { glyphs: TUI_GLYPHS });
+        expect(rows[1]?.state).toBe("active ● here");
         expect(rows[1]?.changes).toBe("+42 -7 ?2 ↑1");
-        expect(rows[2]?.changes).toBe("—");
+        expect(rows[2]?.branch).toBe("—");
     });
 
     it("hides the current marker on request", () => {
@@ -68,7 +79,7 @@ describe("buildRows", () => {
 
 describe("layout", () => {
     it("drops folder, then changes, then truncates the branch", () => {
-        const rows = buildRows(pool);
+        const rows = buildRows(pool, { glyphs: TUI_GLYPHS });
         expect(layoutColumns(rows).columns).toEqual(["index", "branch", "folder", "changes", "state"]);
         // full width 82; without folder 52; without changes 38
         expect(layoutColumns(rows, 55).columns).toEqual(["index", "branch", "changes", "state"]);
@@ -79,6 +90,7 @@ describe("layout", () => {
     it("truncates in the middle", () => {
         expect(truncateMiddle("feature/login-form", 9)).toBe("feat…form");
         expect(truncateMiddle("short", 9)).toBe("short");
+        expect(truncateMiddle("feature/login-form", 9, "...")).toBe("fea...orm");
     });
 });
 
@@ -91,6 +103,10 @@ describe("formatTable", () => {
         expect(lines[2]?.indexOf("feature/login-form")).toBe(lines[0]?.indexOf("BRANCH"));
     });
 
+    it("prints only ASCII, also when it truncates", () => {
+        expect(formatTable(buildRows(pool), { color: false, width: 28 })).toMatch(/^[\x20-\x7e\n]*$/);
+    });
+
     it("adds color codes when asked", () => {
         expect(formatTable(buildRows(pool), { color: true })).toContain("\x1b[");
     });
@@ -98,7 +114,7 @@ describe("formatTable", () => {
 
 describe("nextAssignHint", () => {
     it("names the slot the next assign uses", () => {
-        expect(nextAssignHint(pool)).toBe("next assign → slot 3 (free, reused)");
-        expect(nextAssignHint({ ...pool, slots: pool.slots.slice(0, 2) })).toBe("next assign → slot 2 (new)");
+        expect(nextAssignHint(pool)).toBe("next assign -> slot 3 (free, reused)");
+        expect(nextAssignHint({ ...pool, slots: pool.slots.slice(0, 2) })).toBe("next assign -> slot 2 (new)");
     });
 });

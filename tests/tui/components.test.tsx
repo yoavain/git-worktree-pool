@@ -60,5 +60,8 @@ describe("TUI components", () => {
     it("lists every key in the help screen", () => {
         const frame = render(<Help />).lastFrame()!;
         for (const k of ["Enter", "assign", "free", "delete", "copy", "filter", "quit"]) expect(frame).toContain(k);
+        // Quit moves the shell to the clone after you free or delete the slot you are in.
+        expect(frame).not.toContain("quit without cd");
+        expect(frame).toContain("to the clone");
     });
 });

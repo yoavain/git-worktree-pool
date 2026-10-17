@@ -1,6 +1,7 @@
 import { readdir, rm } from "node:fs/promises";
 import path from "node:path";
 import type { Context } from "./context.js";
+import { UserError } from "./errors.js";
 import { runGit, tryGit } from "./git.js";
 import {
     isInside, lowestUnusedIndex, markerPath, normalizePath, parseMarkerIndex, parseSlotIndex, samePath, slotPath
@@ -9,9 +10,18 @@ import { parseNumstat, parseStatusV2, parseWorktreeList } from "./parse.js";
 
 export type SlotState = "root" | "active" | "free" | "broken";
 
-export const PROBLEM_MISSING = "folder is missing";
-export const PROBLEM_ORPHAN_MARKER = "free marker without a worktree";
-export const PROBLEM_UNREGISTERED = "folder is not a registered worktree";
+// Code compares the code; people read the label.
+export type SlotProblem = "missing" | "orphan-marker" | "unregistered";
+
+const PROBLEM_LABELS: Record<SlotProblem, string> = {
+    "missing": "folder is missing",
+    "orphan-marker": "free marker without a worktree",
+    "unregistered": "folder is not a registered worktree"
+};
+
+export function problemLabel(problem: SlotProblem | undefined): string {
+    return problem ? PROBLEM_LABELS[problem] : "unknown problem";
+}
 
 export interface Changes {
   added: number;
@@ -30,7 +40,7 @@ export interface Slot {
   state: SlotState;
   locked: boolean;
   isCurrent: boolean;
-  problem?: string;
+  problem?: SlotProblem;
   changes?: Changes | null;
 }
 
@@ -75,17 +85,17 @@ export async function loadPool(ctx: Context, opts: { changes?: boolean } = {}): 
 
     for (const e of entries) {
         const p = normalizePath(e.path);
-        if (samePath(p, ctx.root)) {
+        if (samePath(p, ctx.root, ctx.platform)) {
             slots.push({ index: 0, path: p, branch: e.branch, head: e.head, state: "root", locked: false, isCurrent: false });
             continue;
         }
-        const index = samePath(path.dirname(p), ctx.poolRoot) ? parseSlotIndex(ctx.repoName, path.basename(p)) : null;
+        const index = samePath(path.dirname(p), ctx.poolRoot, ctx.platform) ? parseSlotIndex(ctx.repoName, path.basename(p)) : null;
         if (index === null) {
             external.push({ path: p, branch: e.branch, isCurrent: false });
             continue;
         }
         if (e.prunable) {
-            slots.push({ index, path: p, branch: e.branch, head: e.head, state: "broken", locked: e.locked, isCurrent: false, problem: PROBLEM_MISSING });
+            slots.push({ index, path: p, branch: e.branch, head: e.head, state: "broken", locked: e.locked, isCurrent: false, problem: "missing" });
         }
         else if (markers.has(index)) {
             slots.push({ index, path: p, branch: null, head: e.head, state: "free", locked: e.locked, isCurrent: false });
@@ -98,12 +108,12 @@ export async function loadPool(ctx: Context, opts: { changes?: boolean } = {}): 
     const known = new Set(slots.map((s) => s.index));
     for (const index of dirs) {
         if (known.has(index)) continue;
-        slots.push({ index, path: slotPath(ctx.poolRoot, ctx.repoName, index), branch: null, head: null, state: "broken", locked: false, isCurrent: false, problem: PROBLEM_UNREGISTERED });
+        slots.push({ index, path: slotPath(ctx.poolRoot, ctx.repoName, index), branch: null, head: null, state: "broken", locked: false, isCurrent: false, problem: "unregistered" });
         known.add(index);
     }
     for (const index of markers) {
         if (known.has(index)) continue;
-        slots.push({ index, path: slotPath(ctx.poolRoot, ctx.repoName, index), branch: null, head: null, state: "broken", locked: false, isCurrent: false, problem: PROBLEM_ORPHAN_MARKER });
+        slots.push({ index, path: slotPath(ctx.poolRoot, ctx.repoName, index), branch: null, head: null, state: "broken", locked: false, isCurrent: false, problem: "orphan-marker" });
     }
     slots.sort((a, b) => a.index - b.index);
 
@@ -116,7 +126,7 @@ export async function loadPool(ctx: Context, opts: { changes?: boolean } = {}): 
         } }))
     ];
     candidates.sort((a, b) => b.path.length - a.path.length);
-    candidates.find((c) => isInside(ctx.cwd, c.path))?.mark();
+    candidates.find((c) => isInside(ctx.cwd, c.path, ctx.platform))?.mark();
 
     const pool: Pool = { ctx, slots, external };
     return opts.changes ? withChanges(pool) : pool;
@@ -143,6 +153,20 @@ export function findSlot(pool: Pool, index: number): Slot | undefined {
     return pool.slots.find((s) => s.index === index);
 }
 
+export type SlotAction = "free" | "delete";
+
+export function cloneRefusal(action: SlotAction): string {
+    return action === "free" ? "Slot 0 is the clone. It cannot be freed." : "Slot 0 is the clone. wtp never deletes it.";
+}
+
+// The one place that refuses slot 0 and a missing slot, for the CLI, the TUI, and core.
+export function requireSlot(pool: Pool, index: number, action: SlotAction): Slot {
+    if (index === 0) throw new UserError(cloneRefusal(action));
+    const slot = findSlot(pool, index);
+    if (!slot) throw new UserError(`There is no slot ${index}.`);
+    return slot;
+}
+
 export function chooseSlot(pool: Pool): { index: number; reuse: boolean } {
     const free = pool.slots.filter((s) => s.state === "free").map((s) => s.index).sort((a, b) => a - b);
     if (free.length > 0) return { index: free[0]!, reuse: true };
@@ -152,7 +176,7 @@ export function chooseSlot(pool: Pool): { index: number; reuse: boolean } {
 export async function repairPool(ctx: Context): Promise<string[]> {
     const pool = await loadPool(ctx);
     const fixed: string[] = [];
-    const missing = pool.slots.filter((s) => s.problem === PROBLEM_MISSING);
+    const missing = pool.slots.filter((s) => s.problem === "missing");
     if (missing.length > 0) {
         await runGit(["worktree", "prune"], ctx.root);
         for (const s of missing) {
@@ -160,7 +184,7 @@ export async function repairPool(ctx: Context): Promise<string[]> {
             fixed.push(`slot ${s.index}: pruned the missing worktree`);
         }
     }
-    for (const s of pool.slots.filter((x) => x.problem === PROBLEM_ORPHAN_MARKER)) {
+    for (const s of pool.slots.filter((x) => x.problem === "orphan-marker")) {
         await rm(markerPath(ctx.poolRoot, ctx.repoName, s.index), { force: true });
         fixed.push(`slot ${s.index}: removed the free marker without a worktree`);
     }

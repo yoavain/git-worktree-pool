@@ -1,4 +1,4 @@
-import { execFile } from "node:child_process";
+import { runForOutput, type OutputRunner } from "./run.js";
 
 export interface ProcInfo {
   pid: number;
@@ -36,20 +36,13 @@ export function chainFrom(procs: Map<number, ProcInfo>, start: number, max = 8):
     return chain;
 }
 
-export type Runner = (cmd: string, args: string[]) => Promise<string>;
+// The full process list can be large on a busy machine.
+const PROCESS_LIST_MAX_BUFFER = 16 * 1024 * 1024;
 
-const runCommand: Runner = (cmd, args) =>
-    new Promise((resolve, reject) => {
-        execFile(cmd, args, { windowsHide: true, encoding: "utf8", maxBuffer: 16 * 1024 * 1024 }, (err, stdout) => {
-            if (err) reject(err);
-            else resolve(stdout);
-        });
-    });
-
-export async function parentChain(start: number, deps: { platform: NodeJS.Platform; run?: Runner }): Promise<ProcInfo[]> {
+export async function parentChain(start: number, deps: { platform: NodeJS.Platform; run?: OutputRunner }): Promise<ProcInfo[]> {
     if (deps.platform !== "win32") return [];
     try {
-        const out = await (deps.run ?? runCommand)("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", PROCESS_QUERY]);
+        const out = await (deps.run ?? runForOutput({ maxBuffer: PROCESS_LIST_MAX_BUFFER }))("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", PROCESS_QUERY]);
         return chainFrom(parseProcessList(out), start);
     }
     catch {

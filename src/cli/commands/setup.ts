@@ -1,7 +1,7 @@
 import { rm } from "node:fs/promises";
 import path from "node:path";
 import {
-    chooseFolder, launcherNames, launcherSourceDir, LAUNCHER_VERSION, listMarkedLaunchers, markerVersion, realFs,
+    chooseFolder, isCurrentLauncher, isMarked, launcherNames, launcherSourceDir, listMarkedLaunchers, realFs,
     scanWtp, writeLaunchers, type Conflict, type FsDeps
 } from "../../platform/launchers.js";
 import { findOnPath } from "../../platform/path-search.js";
@@ -50,12 +50,6 @@ function manualText(names: readonly string[], srcDir: string, dir: string | null
     return `Copy the wtp launchers by hand into a folder on PATH:\n${lines.join("\n")}\n`;
 }
 
-function isCurrent(file: string, fs: FsDeps): boolean {
-    const head = fs.readHead(file);
-    const v = head === null ? null : markerVersion(head);
-    return v !== null && v >= LAUNCHER_VERSION;
-}
-
 // 'conflict' means setup must stop before any other change.
 type StepResult = "ok" | "failed" | "conflict";
 
@@ -83,12 +77,12 @@ async function setupLaunchers(io: Io, deps: SetupDeps, ask: Ask): Promise<StepRe
     for (const old of scan.stale) {
         if (!(await ask(`Remove the old wtp launcher ${old}?`))) continue;
         await rm(old, { force: true });
-        io.stderr.write(`✓ removed ${old}\n`);
+        io.stderr.write(`removed ${old}\n`);
     }
 
-    const pending = names.filter((n) => !isCurrent(path.join(choice.dir, n), deps.fs));
+    const pending = names.filter((n) => !isCurrentLauncher(path.join(choice.dir, n), deps.fs));
     if (pending.length === 0) {
-        io.stderr.write(`✓ The wtp launchers in ${choice.dir} are up to date.\n`);
+        io.stderr.write(`The wtp launchers in ${choice.dir} are up to date.\n`);
         return "ok";
     }
     if (choice.kind === "admin") {
@@ -96,8 +90,8 @@ async function setupLaunchers(io: Io, deps: SetupDeps, ask: Ask): Promise<StepRe
         const asked = await ask(`Copy ${pending.join(", ")} there as administrator? Windows asks for permission.`);
         if (asked) await deps.adminCopy(pending.map((n) => path.join(deps.srcDir, n)), choice.dir);
         // Trust the files, not the exit code: a declined UAC prompt can still exit 0.
-        if (asked && pending.every((n) => isCurrent(path.join(choice.dir, n), deps.fs))) {
-            for (const n of pending) io.stderr.write(`✓ wrote ${path.join(choice.dir, n)}\n`);
+        if (asked && pending.every((n) => isCurrentLauncher(path.join(choice.dir, n), deps.fs))) {
+            for (const n of pending) io.stderr.write(`wrote ${path.join(choice.dir, n)}\n`);
             return "ok";
         }
         if (asked) io.stderr.write("The administrator copy did not finish.\n");
@@ -109,7 +103,7 @@ async function setupLaunchers(io: Io, deps: SetupDeps, ask: Ask): Promise<StepRe
         return "failed";
     }
     for (const r of await writeLaunchers(choice.dir, pending, { platform: io.platform, srcDir: deps.srcDir })) {
-        io.stderr.write(`✓ ${r.action} ${r.file}\n`);
+        io.stderr.write(`${r.action} ${r.file}\n`);
     }
     return "ok";
 }
@@ -126,9 +120,9 @@ async function install(io: Io, deps: SetupDeps, ask: Ask): Promise<number> {
         const r = await installIntegration(shell, { home: io.home, env: io.env, confirm: ask, log: (s) => {
             io.stderr.write(s);
         } });
-        if (r === "already") io.stderr.write(`✓ ${file} already has the wtp function.\n`);
+        if (r === "already") io.stderr.write(`${file} already has the wtp function.\n`);
         else if (r === "installed") {
-            io.stderr.write(`✓ added the wtp function to ${file}\n`);
+            io.stderr.write(`added the wtp function to ${file}\n`);
             profileChanged = true;
         }
         else {
@@ -139,8 +133,7 @@ async function install(io: Io, deps: SetupDeps, ask: Ask): Promise<number> {
 
     const wins = findOnPath("wtp", { platform: io.platform, env: io.env, isFile: deps.fs.isFile });
     if (wins) {
-        const head = deps.fs.readHead(wins);
-        if (head !== null && markerVersion(head) !== null) io.stderr.write(`wtp runs ${wins}\n`);
+        if (isMarked(wins, deps.fs)) io.stderr.write(`wtp runs ${wins}\n`);
         else {
             io.stderr.write(`! wtp runs ${wins}, which is not a wtp launcher. Check your PATH.\n`);
             ok = false;
@@ -169,7 +162,7 @@ async function removeAll(io: Io, deps: SetupDeps, ask: Ask): Promise<number> {
     for (const f of files) {
         try {
             await rm(f);
-            io.stderr.write(`✓ removed ${f}\n`);
+            io.stderr.write(`removed ${f}\n`);
         }
         catch {
             io.stderr.write(`! Could not remove ${f}. It may need administrator rights.\n`);
@@ -178,12 +171,14 @@ async function removeAll(io: Io, deps: SetupDeps, ask: Ask): Promise<number> {
     }
     for (const s of shells) {
         const f = await removeIntegration(s, io);
-        if (f) io.stderr.write(`✓ removed the wtp function from ${f}\n`);
+        if (f) io.stderr.write(`removed the wtp function from ${f}\n`);
     }
     return ok ? 0 : 1;
 }
 
 export async function setupCommand(args: Args, io: Io, deps: SetupDeps = defaultSetupDeps()): Promise<number> {
-    const ask: Ask = (q) => (args.values.yes ? Promise.resolve(true) : io.confirm(q));
+    // The user ran setup to get these files, so Enter means yes. Removal keeps the safe default, no.
+    const defaultYes = !args.values.remove;
+    const ask: Ask = (q) => (args.values.yes ? Promise.resolve(true) : io.confirm(q, { defaultYes }));
     return args.values.remove ? removeAll(io, deps, ask) : install(io, deps, ask);
 }
