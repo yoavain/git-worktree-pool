@@ -1,12 +1,14 @@
 # git-worktree-pool
 
-Work on several branches at once, without a fresh install and build for each one.
+Work on several branches at once, without a fresh `npm install` for each one.
 
 ## Why
 
-Switching branches in one clone means stashing your work and rebuilding. A separate `git worktree` per branch avoids that, but each new worktree starts empty: you run `npm install` and the build again, and old folders pile up.
+`git worktree add` gives you a second checkout of a branch in seconds. In a large monorepo, though, the checkout is not where the time goes. A new worktree has no `node_modules`, so you run `npm install` there, and that can take a long time.
 
-`wtp` keeps a pool of worktrees next to your clone and reuses them. When you finish a branch, wtp frees its slot. The next branch gets that slot with its `node_modules` and build output still in place. wtp also moves your shell into the slot, so you can start work at once.
+It is worst on Windows. Antivirus and other IT security tools there often check each file as it is written and hold the write until the check ends, so writing the many files of `node_modules` is slow. On macOS, some of these tools check files after they are written, so the same install finishes sooner.
+
+`wtp` keeps a pool of worktrees next to your clone and reuses them, so you pay for that install once per slot, not once per branch. When you finish a branch, wtp frees its slot: it discards the branch's changes but keeps the ignored files, such as `node_modules` and build output. The next branch gets that slot with its dependencies already in place, and a later `npm install` there only has to apply the difference. wtp also moves your shell into the slot, so you can start work at once.
 
 ## Install
 
