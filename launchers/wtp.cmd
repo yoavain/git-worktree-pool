@@ -1,5 +1,5 @@
 @echo off
-rem wtp-launcher 1
+rem wtp-launcher 2
 rem Written by "worktree-pool setup". It runs worktree-pool, then moves this cmd session to
 rem the folder that worktree-pool picked. "worktree-pool setup --remove" deletes this file.
 setlocal

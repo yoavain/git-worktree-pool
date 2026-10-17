@@ -9,7 +9,7 @@ import {
 } from "../../src/platform/launchers.js";
 import type { ProcInfo } from "../../src/platform/process-tree.js";
 
-const MARKED = "rem wtp-launcher 1\r\n";
+const MARKED = "rem wtp-launcher 2\r\n";
 
 // A fake Windows file system: file -> first bytes, plus the writable folders.
 function fakeFs(files: Record<string, string>, writable: string[]): FsDeps {
@@ -109,7 +109,7 @@ describe("scanWtp", () => {
 
 describe("findLauncher and listMarkedLaunchers", () => {
     it("find marked launchers on PATH and in WindowsApps", () => {
-        const fs = fakeFs({ [`${WA}\\wtp.cmd`]: MARKED, [`${WA}\\wtp`]: "# wtp-launcher 1", "C:\\tools\\wtp.cmd": "@echo other" }, []);
+        const fs = fakeFs({ [`${WA}\\wtp.cmd`]: MARKED, [`${WA}\\wtp`]: "# wtp-launcher 2", "C:\\tools\\wtp.cmd": "@echo other" }, []);
         const deps = { platform: "win32" as const, env: { PATH: "C:\\tools", LOCALAPPDATA: LAD }, fs };
         expect(listMarkedLaunchers(deps)).toEqual([`${WA}\\wtp.cmd`, `${WA}\\wtp`]);
         expect(findLauncher(deps)).toBeNull();

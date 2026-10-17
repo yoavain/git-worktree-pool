@@ -87,11 +87,14 @@ describe.runIf(enabled && win)("installed package on Windows", () => {
         expect(lastLine((await cmd("wtp switch 9 & echo rc=!errorlevel!", fx.root)).stdout)).toBe("rc=1");
     });
 
-    it("wtp switch moves pwsh into the slot", async () => {
-        const command = "[Console]::OutputEncoding = [Text.Encoding]::UTF8; wtp switch 1 *> $null; (Get-Location).Path";
-        const r = await run("pwsh", ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", command], { env, cwd: fx.root });
-        expect(samePath(lastLine(r.stdout), slot1(fx))).toBe(true);
-    });
+    // powershell.exe is Windows PowerShell 5.1. In CI it inherits pwsh's PSModulePath, like a 5.1 started from pwsh.
+    for (const exe of ["pwsh", "powershell.exe"]) {
+        it(`wtp switch moves ${exe} into the slot`, async () => {
+            const command = "[Console]::OutputEncoding = [Text.Encoding]::UTF8; wtp switch 1 *> $null; (Get-Location).Path";
+            const r = await run(exe, ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", command], { env, cwd: fx.root });
+            expect(samePath(lastLine(r.stdout), slot1(fx)), r.stderr).toBe(true);
+        });
+    }
 
     it("setup --remove deletes the launchers", async () => {
         expect((await setup(["--remove"])).code).toBe(0);

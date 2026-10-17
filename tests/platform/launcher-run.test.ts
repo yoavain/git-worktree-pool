@@ -38,12 +38,14 @@ async function attempt(cmd: string, args: string[], opts: { env: NodeJS.ProcessE
 // Vitest collects suites synchronously, so probe the shells with top-level await.
 const bash = await findGitBash();
 const bashOk = bash !== null && (await available(bash, ["--version"]));
-// Both entries always exist, so the wtp.ps1 suite is never empty (vitest fails an empty suite).
-// The launchers are Windows-only, so off Windows both tests are skipped.
-const psShells: { exe: string; ok: boolean }[] = [];
-for (const exe of ["pwsh", "powershell.exe"]) {
-    psShells.push({ exe, ok: win && (await available(exe, ["-NoProfile", "-NonInteractive", "-Command", "exit 0"])) });
-}
+// The launchers are Windows-only, so off Windows the wtp.ps1 tests are skipped.
+const psProbe = ["-NoProfile", "-NonInteractive", "-Command", "exit 0"];
+const pwshOk = win && (await available("pwsh", psProbe));
+const winPsOk = win && (await available("powershell.exe", psProbe));
+const pwshModulePath = pwshOk
+    ? await run("pwsh", ["-NoProfile", "-NonInteractive", "-Command", "[Console]::Out.Write($env:PSModulePath)"], { windowsHide: true })
+        .then((r) => r.stdout, () => null)
+    : null;
 
 // Each test sets PATH itself. On Windows the key can be "Path", so drop every spelling.
 const baseEnv: NodeJS.ProcessEnv = Object.fromEntries(Object.entries(process.env).filter(([k]) => k.toUpperCase() !== "PATH"));
@@ -112,7 +114,7 @@ describe("launcher files", () => {
         for (const f of NAMES) {
             const text = await readFile(path.join(LAUNCHERS, f), "latin1");
             expect([...text].every((c) => c.charCodeAt(0) < 128)).toBe(true);
-            expect(text).toContain("wtp-launcher 1");
+            expect(text).toContain("wtp-launcher 2");
         }
     });
 });
@@ -155,36 +157,35 @@ describe.runIf(win)("wtp.cmd", () => {
 });
 
 describe("wtp.ps1", () => {
-    for (const { exe, ok } of psShells) {
-        it.runIf(ok)(`moves ${exe} to the folder that worktree-pool picks`, async () => {
-            // The shell writes its folder to a UTF-8 file, not to stdout. Without a console (CI runners),
-            // Windows PowerShell 5.1 encodes stdout in the OEM code page, and the u-umlaut gets lost.
-            const where = path.join(tmp, `where-${exe}.txt`);
-            const which = path.join(tmp, `which-${exe}.txt`);
-            const ran = path.join(tmp, `ran-${exe}.txt`);
-            const command = [
-                `[IO.File]::WriteAllText('${which}', (Get-Command wtp).Source)`,
-                "wtp",
-                "\"rc=$LASTEXITCODE\"",
-                `[IO.File]::WriteAllText('${where}', (Get-Location).Path)`
-            ].join("; ");
-            const r = await attempt(exe, ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", command], {
-                env: env({ FAKE_TARGET: umlautTarget, FAKE_RAN_FILE: ran }), cwd: tmp
-            });
-            const read = (f: string) => readFile(f, "utf8").catch(() => "(no file)");
-            const landed = await read(where);
-            const why = `landed in ${landed}; wtp is ${await read(which)}; fake: ${await read(ran)}; stderr: ${r.stderr.trim() || "(empty)"}`;
-            expect(lastLine(r.stdout), why).toBe("rc=0");
-            expect(samePath(landed, umlautTarget), why).toBe(true);
-        });
+    const ps = (exe: string, command: string, e: NodeJS.ProcessEnv) =>
+        attempt(exe, ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", command], { env: e, cwd: tmp });
+    const read = (f: string) => readFile(f, "utf8").catch(() => "(no file)");
+
+    // The shell writes its folder to a UTF-8 file, so the check does not depend on the console code page.
+    async function movesTo(exe: string, tag: string, extra: NodeJS.ProcessEnv = {}) {
+        const where = path.join(tmp, `where-${tag}.txt`);
+        const ran = path.join(tmp, `ran-${tag}.txt`);
+        const r = await ps(exe, ["wtp", "\"rc=$LASTEXITCODE\"", `[IO.File]::WriteAllText('${where}', (Get-Location).Path)`].join("; "),
+            env({ FAKE_TARGET: umlautTarget, FAKE_RAN_FILE: ran, ...extra }));
+        const landed = await read(where);
+        const why = `landed in ${landed}; fake: ${await read(ran)}; stderr: ${r.stderr.trim() || "(empty)"}`;
+        expect(lastLine(r.stdout), why).toBe("rc=0");
+        expect(samePath(landed, umlautTarget), why).toBe(true);
+    }
+
+    for (const [exe, ok] of [["pwsh", pwshOk], ["powershell.exe", winPsOk]] as const) {
+        it.runIf(ok)(`moves ${exe} to the folder that worktree-pool picks`, () => movesTo(exe, exe));
 
         it.runIf(ok)(`keeps the exit code in ${exe}`, async () => {
-            const r = await attempt(exe, ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", "wtp; \"rc=$LASTEXITCODE\""], {
-                env: env({ FAKE_EXIT: "3" }), cwd: tmp
-            });
+            const r = await ps(exe, "wtp; \"rc=$LASTEXITCODE\"", env({ FAKE_EXIT: "3" }));
             expect(lastLine(r.stdout)).toBe("rc=3");
         });
     }
+
+    // GitHub runs Windows steps in pwsh, and a powershell.exe started from pwsh inherits pwsh's
+    // PSModulePath. Windows PowerShell 5.1 then cannot load New-TemporaryFile.
+    it.runIf(winPsOk && pwshModulePath !== null)("moves powershell.exe when it inherits the PSModulePath of pwsh", () =>
+        movesTo("powershell.exe", "powershell-from-pwsh", { PSModulePath: pwshModulePath! }));
 });
 
 describe("wtp (sh)", () => {
