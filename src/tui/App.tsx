@@ -87,8 +87,10 @@ function elapsed(ms: number): string {
 }
 
 function progressText(mode: Extract<Mode, { kind: "script" }>, now: number, width: number): string {
-    const frame = SPINNER[Math.floor((now - mode.startedAt) / 100) % SPINNER.length];
-    const text = `${frame} ${verbing(mode.key)} slot ${mode.index} · ${mode.display} · ${elapsed(now - mode.startedAt)}`;
+    // Date.now() is wall-clock time and can step back, so clamp at zero.
+    const ms = Math.max(0, now - mode.startedAt);
+    const frame = SPINNER[Math.floor(ms / 100) % SPINNER.length];
+    const text = `${frame} ${verbing(mode.key)} slot ${mode.index} · ${mode.display} · ${elapsed(ms)}`;
     return text.length < width ? text : `${text.slice(0, Math.max(0, width - 2))}…`;
 }
 
@@ -163,8 +165,10 @@ export function App({ initialPool, actions, initialMode = "list", platform, onEx
         return actions.lifecycle(key, target, {
             signal: abort.signal,
             onStart: (display) => {
-                setNow(Date.now());
-                setMode({ kind: "script", key, index: target.index, display, startedAt: Date.now(), abort });
+                // One timestamp: two Date.now() calls can straddle a millisecond and give a negative elapsed time.
+                const startedAt = Date.now();
+                setNow(startedAt);
+                setMode({ kind: "script", key, index: target.index, display, startedAt, abort });
             }
         });
     }
