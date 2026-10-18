@@ -13,8 +13,9 @@ export function Popup(props: {
     return (
         <Box flexDirection="column" borderStyle="round" borderColor={BORDER[props.tone]} paddingX={1} marginTop={1}>
             <Text bold color={BORDER[props.tone]}>{props.title}</Text>
-            {props.lines.map((l) => (
-                <Text key={l}>{l}</Text>
+            {/* Script output can repeat a line, so the key includes the position. */}
+            {props.lines.map((l, i) => (
+                <Text key={`${i}:${l}`}>{l}</Text>
             ))}
             {props.checkbox ? (
                 <Text>

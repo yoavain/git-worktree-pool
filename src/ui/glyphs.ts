@@ -10,3 +10,5 @@ export interface Glyphs {
 
 export const PLAIN_GLYPHS: Glyphs = { arrow: "->", ahead: "ahead ", behind: "behind ", none: "-", here: "*", ellipsis: "..." };
 export const TUI_GLYPHS: Glyphs = { arrow: "→", ahead: "↑", behind: "↓", none: "—", here: "●", ellipsis: "…" };
+// The TUI's progress line while a setup or teardown script runs.
+export const SPINNER: readonly string[] = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];

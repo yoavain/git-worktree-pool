@@ -53,10 +53,10 @@ wtp works from the clone, from the pool folder, and from any slot.
 |---|---|
 | `wtp` | Opens the TUI. |
 | `wtp list`, `wtp ls` | Prints the slot table. `--json` prints the data. `--no-changes` skips the change counts. |
-| `wtp assign <branch>` | Gives the branch a slot, copies the path, and moves the shell there. `--no-cd` only copies. When the branch is already in a slot, wtp offers to switch there. |
+| `wtp assign <branch>` | Gives the branch a slot, copies the path, and moves the shell there. `--no-cd` only copies. `--no-setup` skips the setup script. When the branch is already in a slot, wtp offers to switch there. |
 | `wtp switch <index\|branch>` | Copies the slot path and moves the shell there. A branch name must match exactly. It also reaches a worktree outside the pool. |
-| `wtp free <index>` | Asks, then discards uncommitted changes, releases the branch, and marks the slot free. `--yes` skips the question. `--force` frees a locked slot. |
-| `wtp delete <index>` | Asks, then discards uncommitted changes and removes the slot folder. `--yes` skips the question. `--branch` also deletes the local branch. `--force` allows unmerged branches and locked slots. |
+| `wtp free <index>` | Asks, then discards uncommitted changes, releases the branch, and marks the slot free. `--yes` skips the question. `--force` frees a locked slot. `--no-teardown` skips the teardown script. |
+| `wtp delete <index>` | Asks, then discards uncommitted changes and removes the slot folder. `--yes` skips the question. `--branch` also deletes the local branch. `--force` allows unmerged branches and locked slots. `--no-teardown` skips the teardown script. |
 | `wtp path <index\|branch>` | Prints the slot path. |
 | `wtp doctor` | Reports pool problems and repairs the safe ones. |
 
@@ -87,6 +87,29 @@ Per-repo settings live in git config:
 | `wtp.remote` | `origin` | The remote that assign looks at |
 
 For example: `git config wtp.base develop`.
+
+## Setup and teardown scripts
+
+wtp runs a repo's [Superset](https://docs.superset.sh/setup-teardown-scripts) scripts, so one `.superset/` folder serves both tools. A minimal `.superset/config.json`:
+
+```json
+{ "setup": ["npm install"] }
+```
+
+| Event | Runs |
+|---|---|
+| `assign` (new or reused slot) | `setup`, after the branch is checked out |
+| `free`, `delete` of an active slot | `teardown`, before wtp frees or removes the slot |
+
+* wtp joins the commands with `&&` and runs them in the shell you called wtp from: cmd, PowerShell, bash, zsh or fish. A team on several systems should write `npm run <script>` and keep the logic in `package.json`.
+* Without a `setup` or `teardown` key, wtp runs `.superset/setup.sh` or `teardown.sh` through bash (Git Bash on Windows).
+* The scripts get `SUPERSET_ROOT_PATH` (the clone), `SUPERSET_WORKSPACE_NAME` (the branch), `SUPERSET_WORKSPACE_PATH` (the slot), and `WTP_SLOT` (the slot index).
+* If setup fails, the slot stays assigned and wtp still moves you there. `wtp assign` then exits with code 4.
+* If teardown fails, wtp warns and frees or deletes the slot anyway. The TUI asks first. Teardown stops after 60 seconds.
+* `--no-setup` and `--no-teardown` skip the scripts.
+* The user override (`~/.superset/projects/<repo path>/config.json`) and `config.local.json` work as in Superset. On Windows, the drive letter has no colon: `~/.superset/projects/C/Dev/my-repo/config.json`.
+* A reused slot keeps ignored files, so a personal `.superset/config.local.json` left in a slot also applies to the next branch there.
+* The shell rule needs the current launchers. After an update, run `worktree-pool setup` again; `wtp doctor` says when a launcher is old. With an old launcher, wtp uses cmd on Windows and `$SHELL` elsewhere.
 
 ## Notes
 

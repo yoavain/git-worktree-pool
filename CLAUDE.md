@@ -20,6 +20,7 @@ npm CLI + Ink TUI (`wtp`) that hands out reusable git worktrees next to a clone 
 * A child process can't change its parent shell's folder. `worktree-pool` writes the target folder to the file in `WTP_CWD_FILE`; the launcher that called it does the `cd`.
 * `package.json` has one bin, `worktree-pool`. `worktree-pool setup` writes `wtp.cmd`, `wtp.ps1` and `wtp` (sh) from `launchers/`. A `wtp` bin is wrong: nvm shim mode, Volta and scoop turn it into `wtp.exe`, and an .exe beats a .cmd.
 * bash/zsh/fish move through a profile function (`worktree-pool init <shell>`); the sh launcher can't.
+* The launchers and the profile function also set `WTP_SHELL`. It picks the shell that runs `.superset` setup and teardown scripts.
 * Rejected, do not re-propose: postinstall scripts, registry/AutoRun/doskey, changing nvm config, assuming nvm exists.
 
 ## Gotchas

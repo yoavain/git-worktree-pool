@@ -1,12 +1,16 @@
 import { Box, Text, useApp, useInput, useStdout } from "ink";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { afterTeardown, failureText, type LifecycleFailure, type LifecycleResult, type LifecycleTarget } from "../cli/lifecycle.js";
 import type { AssignResult } from "../core/assign.js";
 import { takenBranches, type BranchChoice } from "../core/branch.js";
+import { assertDeletable } from "../core/delete.js";
 import { BranchInUseError } from "../core/errors.js";
-import { describeLoss, type SlotInspection } from "../core/free.js";
-import { chooseSlot, cloneRefusal, type Pool, type SlotAction } from "../core/pool.js";
+import { assertFreeable, describeLoss, type SlotInspection } from "../core/free.js";
+import type { LifecycleKey } from "../core/lifecycle.js";
+import { chooseSlot, cloneRefusal, findSlot, type Pool, type SlotAction } from "../core/pool.js";
 import type { CopyResult } from "../platform/clipboard.js";
-import { TUI_GLYPHS } from "../ui/glyphs.js";
+import { stripAnsi } from "../ui/ansi.js";
+import { SPINNER, TUI_GLYPHS } from "../ui/glyphs.js";
 import { assignSummary, deletedText, freedText, slotTarget } from "../ui/labels.js";
 import { buildRows, nextAssignHint, type Row } from "../ui/table.js";
 import { AssignPopup } from "./AssignPopup.js";
@@ -22,10 +26,12 @@ export interface TuiActions {
   loadChanges(pool: Pool): Promise<Pool>;
   assign(branch: string): Promise<AssignResult>;
   inspect(index: number): Promise<SlotInspection>;
-  free(index: number): Promise<void>;
-  remove(index: number, opts: { deleteBranch: boolean }): Promise<string[]>;
+  // expectBranch is set after a teardown: the branch the slot must still hold.
+  free(index: number, opts: { expectBranch?: string | null }): Promise<void>;
+  remove(index: number, opts: { deleteBranch: boolean; expectBranch?: string | null }): Promise<string[]>;
   listBranches(): Promise<BranchChoice[]>;
   copy(text: string): Promise<CopyResult>;
+  lifecycle(key: LifecycleKey, target: LifecycleTarget, opts: { signal: AbortSignal; onStart(display: string): void }): Promise<LifecycleResult>;
 }
 
 export interface TuiResult {
@@ -51,7 +57,13 @@ type Mode =
   | { kind: "assign"; query: string; selected: number }
   | { kind: "confirmCdFree"; row: Row }
   | { kind: "confirmFree"; row: Row; lines: string[] }
-  | { kind: "confirmDelete"; row: Row; lines: string[]; deleteBranch: boolean };
+  | { kind: "confirmDelete"; row: Row; lines: string[]; deleteBranch: boolean }
+  | { kind: "script"; key: LifecycleKey; index: number; display: string; startedAt: number; abort: AbortController }
+  // anyway: the free or delete that a failed teardown held back. null for setup.
+  | { kind: "scriptFailed"; key: LifecycleKey; index: number; failure: LifecycleFailure; anyway: { verb: "free" | "delete"; run(): void } | null };
+
+// The popup shows the end of the output, where npm ERR! and similar lines are.
+const TAIL_LINES = 20;
 
 // Modes with a popup show their keys in the popup, so the footer shows none.
 const FOOTER_KEYS: Record<Mode["kind"], readonly KeyHint[]> = {
@@ -62,8 +74,29 @@ const FOOTER_KEYS: Record<Mode["kind"], readonly KeyHint[]> = {
     assign: [],
     confirmCdFree: [],
     confirmFree: [],
-    confirmDelete: []
+    confirmDelete: [],
+    script: [],
+    scriptFailed: []
 };
+
+const verbing = (key: LifecycleKey) => (key === "setup" ? "setting up" : "tearing down");
+
+function elapsed(ms: number): string {
+    const s = Math.floor(ms / 1000);
+    return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+}
+
+function progressText(mode: Extract<Mode, { kind: "script" }>, now: number, width: number): string {
+    const frame = SPINNER[Math.floor((now - mode.startedAt) / 100) % SPINNER.length];
+    const text = `${frame} ${verbing(mode.key)} slot ${mode.index} · ${mode.display} · ${elapsed(now - mode.startedAt)}`;
+    return text.length < width ? text : `${text.slice(0, Math.max(0, width - 2))}…`;
+}
+
+function failureLines(key: LifecycleKey, f: LifecycleFailure): string[] {
+    const tail = stripAnsi(f.tail).split(/\r?\n/).map((l) => l.trimEnd());
+    while (tail.length && tail[tail.length - 1] === "") tail.pop();
+    return [f.display, failureText(key, f), ...tail.slice(-TAIL_LINES)];
+}
 
 const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
@@ -114,6 +147,52 @@ export function App({ initialPool, actions, initialMode = "list", platform, onEx
     useEffect(() => {
         setSelected((s) => moveSelection(s, 0, rows.length));
     }, [rows.length]);
+
+    // The progress line's spinner and clock.
+    const [now, setNow] = useState(() => Date.now());
+    useEffect(() => {
+        if (mode.kind !== "script") return;
+        const timer = setInterval(() => setNow(Date.now()), 100);
+        return () => clearInterval(timer);
+    }, [mode.kind]);
+
+    // The progress line appears only once a script starts, so a repo without scripts sees nothing extra.
+    async function runScript(key: LifecycleKey, target: LifecycleTarget, label: string): Promise<LifecycleResult> {
+        const abort = new AbortController();
+        setMode({ kind: "working", label });
+        return actions.lifecycle(key, target, {
+            signal: abort.signal,
+            onStart: (display) => {
+                setNow(Date.now());
+                setMode({ kind: "script", key, index: target.index, display, startedAt: Date.now(), abort });
+            }
+        });
+    }
+
+    // Free and delete run the slot's teardown first. A failed one asks before the free or delete goes on;
+    // Ctrl+C during it changes nothing else.
+    // job gets the branch to re-check under the lock, and whether a teardown ran (for the error text).
+    async function withTeardown(r: Row, verb: "free" | "delete", job: (expectBranch: string | null | undefined, ran: boolean) => void) {
+        const slot = findSlot(pool, r.slotIndex!);
+        if (!slot || slot.state !== "active") return job(undefined, false);
+        try {
+            if (verb === "free") assertFreeable(slot, slot.index, false);
+            else assertDeletable(slot, slot.index, false);
+            const label = `${verb === "free" ? "Freeing" : "Deleting"} slot ${slot.index}…`;
+            const res = await runScript("teardown", { root: pool.ctx.root, index: slot.index, path: slot.path, branch: slot.branch }, label);
+            if (res.status !== "failed") return job(slot.branch, res.status === "ok");
+            if (res.interrupted) {
+                setMode({ kind: "list" });
+                setMessage({ tone: "info", text: `Teardown interrupted. Slot ${slot.index} was not ${verb === "free" ? "freed" : "deleted"}.` });
+                return;
+            }
+            setMode({ kind: "scriptFailed", key: "teardown", index: slot.index, failure: res, anyway: { verb, run: () => job(slot.branch, true) } });
+        }
+        catch (e) {
+            setMode({ kind: "list" });
+            fail(e);
+        }
+    }
 
     async function run(label: string, job: () => Promise<string>) {
         setMode({ kind: "working", label });
@@ -191,6 +270,17 @@ export function App({ initialPool, actions, initialMode = "list", platform, onEx
         setMode({ kind: "working", label: `Assigning ${name}…` });
         try {
             const r = await actions.assign(name);
+            const setup = await runScript("setup", { root: pool.ctx.root, index: r.index, path: r.path, branch: name }, `Assigning ${name}…`);
+            if (setup.status === "failed") {
+                // The slot stays assigned. The TUI stays open, also for "wtp assign", so the user sees why.
+                const fresh = await actions.reload();
+                setPool(fresh);
+                selectSlot(fresh, r.index);
+                setMessage(null);
+                setMode({ kind: "scriptFailed", key: "setup", index: r.index, failure: setup, anyway: null });
+                setPool(await actions.loadChanges(fresh));
+                return;
+            }
             const notes = [
                 ...(r.createdPoolRoot ? [`created the pool folder ${pool.ctx.poolRoot}`] : []),
                 ...r.warnings.map((w) => `! ${w}`),
@@ -223,7 +313,23 @@ export function App({ initialPool, actions, initialMode = "list", platform, onEx
     }
 
     useInput((input, key) => {
-        if (mode.kind === "working") return;
+        // Ink's exitOnCtrlC is off, so a running script can be stopped without leaving the TUI.
+        if (key.ctrl && input === "c") {
+            if (mode.kind === "script") mode.abort.abort();
+            else exit();
+            return;
+        }
+        if (mode.kind === "working" || mode.kind === "script") return;
+
+        if (mode.kind === "scriptFailed") {
+            if (!mode.anyway) {
+                setMode({ kind: "list" });
+                setMessage({ tone: "info", text: `Press Enter to go to slot ${mode.index}.` });
+            }
+            else if (input === "y") mode.anyway.run();
+            else if (input === "n" || key.escape) setMode({ kind: "list" });
+            return;
+        }
 
         if (mode.kind === "help") {
             setMode({ kind: "list" });
@@ -268,11 +374,11 @@ export function App({ initialPool, actions, initialMode = "list", platform, onEx
         if (mode.kind === "confirmFree") {
             const r = mode.row;
             if (input === "y") {
-                void run(`Freeing slot ${r.index}…`, async () => {
-                    await actions.free(r.slotIndex!);
+                void withTeardown(r, "free", (expectBranch, ran) => void run(`Freeing slot ${r.index}…`, () => afterTeardown(ran, async () => {
+                    await actions.free(r.slotIndex!, { expectBranch });
                     if (r.isCurrent) setExitCd(pool.ctx.root);
                     return freedText(r.slotIndex!);
-                });
+                })));
             }
             else if (input === "n" || key.escape) setMode({ kind: "list" });
             return;
@@ -282,11 +388,11 @@ export function App({ initialPool, actions, initialMode = "list", platform, onEx
             const { row: r, deleteBranch } = mode;
             if (input === " ") setMode({ ...mode, deleteBranch: !deleteBranch });
             else if (input === "y") {
-                void run(`Deleting slot ${r.index}…`, async () => {
-                    const warnings = await actions.remove(r.slotIndex!, { deleteBranch });
+                void withTeardown(r, "delete", (expectBranch, ran) => void run(`Deleting slot ${r.index}…`, () => afterTeardown(ran, async () => {
+                    const warnings = await actions.remove(r.slotIndex!, { deleteBranch, expectBranch });
                     if (r.isCurrent) setExitCd(pool.ctx.root);
                     return [deletedText(r.slotIndex!, null), ...warnings].join(" ");
-                });
+                })));
             }
             else if (input === "n" || key.escape) setMode({ kind: "list" });
             return;
@@ -353,8 +459,19 @@ export function App({ initialPool, actions, initialMode = "list", platform, onEx
                     checkbox={mode.row.tone === "active" ? { label: `also delete local branch ${mode.row.branch}`, checked: mode.deleteBranch } : undefined}
                 />
             ) : null}
+            {mode.kind === "scriptFailed" ? (
+                <Popup
+                    title={`${mode.key === "setup" ? "Setup" : "Teardown"} failed in slot ${mode.index}`}
+                    tone="danger"
+                    lines={failureLines(mode.key, mode.failure)}
+                    keys={mode.anyway ? [["y", `${mode.anyway.verb} anyway`], ["n", "cancel"]] : [["any key", "close"]]}
+                />
+            ) : null}
             {mode.kind === "help" ? <Help /> : null}
-            <Footer message={mode.kind === "working" ? { tone: "info", text: mode.label } : message} keys={FOOTER_KEYS[mode.kind]} />
+            <Footer
+                message={mode.kind === "working" ? { tone: "info", text: mode.label } : mode.kind === "script" ? { tone: "info", text: progressText(mode, now, width) } : message}
+                keys={FOOTER_KEYS[mode.kind]}
+            />
         </Box>
     );
 }

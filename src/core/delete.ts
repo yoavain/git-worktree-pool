@@ -1,15 +1,18 @@
 import { rename, rm } from "node:fs/promises";
 import type { Context } from "./context.js";
 import { GitError, UserError } from "./errors.js";
+import { assertUnchanged } from "./free.js";
 import { runGit, tryGit } from "./git.js";
 import { withPoolLock } from "./lock.js";
 import { markerPath } from "./naming.js";
-import { loadPool, requireSlot } from "./pool.js";
+import { loadPool, requireSlot, type Slot } from "./pool.js";
 
 export interface DeleteOptions {
   discard?: boolean;
   unlock?: boolean;
   deleteBranch?: false | "safe" | "force";
+  // Set after a teardown: the branch the slot must still hold.
+  expectBranch?: string | null;
 }
 
 export interface DeleteResult {
@@ -78,13 +81,19 @@ async function removeWorktree(ctx: Context, dir: string, index: number, opts: De
     }
 }
 
+// The refusals that need no lock. The command layer runs them before teardown, so a refusal comes first.
+export function assertDeletable(slot: Slot, index: number, unlock: boolean): void {
+    if (slot.problem === "unregistered") {
+        throw new UserError(`${slot.path} is not a registered worktree. wtp does not delete it. Check what it holds and remove it by hand.`);
+    }
+    if (slot.locked && !unlock) throw new UserError(`Slot ${index} is locked by git worktree lock. Pass --force to delete it.`);
+}
+
 export async function deleteSlot(ctx: Context, index: number, opts: DeleteOptions = {}): Promise<DeleteResult> {
     return withPoolLock(ctx.poolRoot, async () => {
         const slot = requireSlot(await loadPool(ctx), index, "delete");
-        if (slot.problem === "unregistered") {
-            throw new UserError(`${slot.path} is not a registered worktree. wtp does not delete it. Check what it holds and remove it by hand.`);
-        }
-        if (slot.locked && !opts.unlock) throw new UserError(`Slot ${index} is locked by git worktree lock. Pass --force to delete it.`);
+        assertUnchanged(slot, index, opts.expectBranch);
+        assertDeletable(slot, index, Boolean(opts.unlock));
 
         const branch = slot.state === "active" ? slot.branch : null;
         if (slot.problem === "missing") await runGit(["worktree", "prune"], ctx.root);
