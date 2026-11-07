@@ -1,0 +1,23 @@
+{
+    "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+    "extends": ["config:recommended"],
+    "labels": ["renovate", "dependencies"],
+    "packageRules": [
+        {
+            "matchDepTypes": ["dependencies"],
+            "labels": ["dependencies"],
+            "matchUpdateTypes": ["minor", "patch"],
+            "automerge": true
+        },
+        {
+            "matchDepTypes": ["devDependencies"],
+            "labels": ["dev-dependencies"],
+            "matchUpdateTypes": ["minor", "patch"],
+            "automerge": true
+        }
+    ],
+    "prConcurrentLimit": 5,
+    "minimumReleaseAge": "14 days",
+    "internalChecksFilter": "strict",
+    "ignoreNpmrcFile": true
+}

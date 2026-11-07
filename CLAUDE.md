@@ -38,6 +38,7 @@ npm CLI + Ink TUI (`wtp`) that hands out reusable git worktrees next to a clone 
 ## Dependencies
 
 * Pins lag the newest release: `.npmrc` sets `min-release-age=14`. Raise a pin when the release is old enough and Snyk has assessed it.
+* Renovate (`.github/renovate.json`) opens bump PRs after the same 14 days. It automerges minor and patch bumps of `dependencies` and `devDependencies` when CI passes. Majors and `overrides` wait for review.
 * Owner-approved native code: the `@typescript/native` platform binary, unrs-resolver (via eslint-import-resolver-typescript), rolldown and lightningcss (via vite), yoga-layout WebAssembly (via ink).
 * yoga-layout rates "Review recommended" in Snyk for inactive maintenance only, with no known vulnerabilities. The owner approved it.
 * `overrides.rolldown` pins the newest version Snyk assessed for the Windows binding.
