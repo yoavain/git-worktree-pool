@@ -1,4 +1,4 @@
-import { Box, Text, useApp, useInput, useStdout } from "ink";
+import { Box, Text, useApp, useInput, useWindowSize } from "ink";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { afterTeardown, failureText, type LifecycleFailure, type LifecycleResult, type LifecycleTarget } from "../cli/lifecycle.js";
 import type { AssignResult } from "../core/assign.js";
@@ -105,8 +105,7 @@ const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e));
 export function App({ initialPool, actions, initialMode = "list", platform, onExit }: AppProps) {
     const { exit } = useApp();
     const opensAssign = initialMode === "assign";
-    const { stdout } = useStdout();
-    const width = stdout?.columns ?? 100;
+    const { columns: width } = useWindowSize();
 
     const [pool, setPool] = useState(initialPool);
     const [filter, setFilter] = useState("");
