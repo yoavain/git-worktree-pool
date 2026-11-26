@@ -59,7 +59,7 @@
     "globals": "17.14.0",
     "ink-testing-library": "4.0.0",
     "typescript": "npm:@typescript/typescript6@6.0.2",
-    "vite": "8.3.6",
+    "vite": "8.3.8",
     "vitest": "5.1.0"
   },
   "dependencies": {
